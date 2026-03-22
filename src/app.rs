@@ -273,7 +273,30 @@ pub fn App() -> impl IntoView {
                                     <article
                                         class=("thread-card", true)
                                         class:active=move || selected_thread_id.get() == Some(active_thread_id.clone())
-                                        on:click=move |_| set_selected_thread_id.set(Some(click_thread_id.clone()))
+                                        on:click=move |_| {
+                                            let thread_id = click_thread_id.clone();
+                                            set_selected_thread_id.set(Some(thread_id.clone()));
+                                            set_selected_job_id.set(None);
+                                            set_selected_job_detail.set(None);
+
+                                            spawn_local({
+                                                let set_selected_thread = set_selected_thread;
+                                                let set_status_text = set_status_text;
+                                                async move {
+                                                    if let Err(error) = sync_selected_thread(
+                                                        thread_id,
+                                                        set_selected_thread,
+                                                        set_status_text,
+                                                    )
+                                                    .await
+                                                    {
+                                                        set_status_text.set(format!(
+                                                            "Failed to load thread: {error}"
+                                                        ));
+                                                    }
+                                                }
+                                            });
+                                        }
                                     >
                                         <h3>{thread.title.clone()}</h3>
                                         <div class="thread-meta">
