@@ -2,6 +2,7 @@ use gloo_net::http::{Request, Response};
 use gloo_timers::future::TimeoutFuture;
 use leptos::{ev, prelude::*, task::spawn_local};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
+use serde_json::Value;
 
 #[derive(Clone, Debug, Deserialize, PartialEq)]
 struct ThreadSummary {
@@ -45,6 +46,14 @@ struct JobRecord {
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq)]
+struct JobEventRecord {
+    id: String,
+    event_type: String,
+    payload_json: Value,
+    created_at: String,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq)]
 struct ThreadDetail {
     #[serde(flatten)]
     thread: ThreadRecord,
@@ -56,6 +65,7 @@ struct ThreadDetail {
 struct JobDetail {
     #[serde(flatten)]
     job: JobRecord,
+    events: Vec<JobEventRecord>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -87,6 +97,8 @@ pub fn App() -> impl IntoView {
     let (threads, set_threads) = signal(Vec::<ThreadSummary>::new());
     let (selected_thread_id, set_selected_thread_id) = signal(None::<String>);
     let (selected_thread, set_selected_thread) = signal(None::<ThreadDetail>);
+    let (selected_job_id, set_selected_job_id) = signal(None::<String>);
+    let (selected_job_detail, set_selected_job_detail) = signal(None::<JobDetail>);
     let (new_thread_title, set_new_thread_title) = signal(String::new());
     let (new_message_content, set_new_message_content) = signal(String::new());
     let (new_job_title, set_new_job_title) = signal(String::new());
@@ -101,6 +113,8 @@ pub fn App() -> impl IntoView {
         let set_selected_thread_id = set_selected_thread_id;
         let set_status_text = set_status_text;
         let set_selected_thread = set_selected_thread;
+        let selected_job_id = selected_job_id;
+        let set_selected_job_detail = set_selected_job_detail;
 
         async move {
             if let Err(error) = sync_thread_list(
@@ -117,23 +131,22 @@ pub fn App() -> impl IntoView {
             loop {
                 TimeoutFuture::new(5_000).await;
 
-                if let Err(error) = sync_thread_list(
+                let _ = sync_thread_list(
                     set_threads,
                     selected_thread_id,
                     set_selected_thread_id,
                     set_status_text,
                 )
-                .await
-                {
-                    set_status_text.set(format!("Failed to poll threads: {error}"));
-                }
+                .await;
 
                 if let Some(thread_id) = selected_thread_id.get_untracked() {
-                    if let Err(error) =
-                        sync_selected_thread(thread_id, set_selected_thread, set_status_text).await
-                    {
-                        set_status_text.set(format!("Failed to refresh thread: {error}"));
-                    }
+                    let _ =
+                        sync_selected_thread(thread_id, set_selected_thread, set_status_text).await;
+                }
+
+                if let Some(job_id) = selected_job_id.get_untracked() {
+                    let _ =
+                        sync_selected_job(job_id, set_selected_job_detail, set_status_text).await;
                 }
             }
         }
@@ -150,12 +163,9 @@ pub fn App() -> impl IntoView {
                     let set_selected_thread = set_selected_thread;
                     let set_status_text = set_status_text;
                     async move {
-                        if let Err(error) =
+                        let _ =
                             sync_selected_thread(thread_id, set_selected_thread, set_status_text)
-                                .await
-                        {
-                            set_status_text.set(format!("Failed to load thread: {error}"));
-                        }
+                                .await;
                     }
                 });
             } else {
@@ -164,202 +174,84 @@ pub fn App() -> impl IntoView {
         }
     });
 
+    Effect::new({
+        let selected_thread = selected_thread;
+        let selected_job_id = selected_job_id;
+        let set_selected_job_id = set_selected_job_id;
+        let set_selected_job_detail = set_selected_job_detail;
+
+        move |_| {
+            if let Some(thread) = selected_thread.get() {
+                let current_job_id = selected_job_id.get();
+                let next_job_id = if current_job_id
+                    .as_ref()
+                    .is_some_and(|job_id| thread.jobs.iter().any(|job| job.id == *job_id))
+                {
+                    current_job_id
+                } else {
+                    thread.jobs.first().map(|job| job.id.clone())
+                };
+                set_selected_job_id.set(next_job_id);
+            } else {
+                set_selected_job_id.set(None);
+                set_selected_job_detail.set(None);
+            }
+        }
+    });
+
+    Effect::new({
+        let selected_job_id = selected_job_id;
+        let set_selected_job_detail = set_selected_job_detail;
+        let set_status_text = set_status_text;
+
+        move |_| {
+            if let Some(job_id) = selected_job_id.get() {
+                spawn_local({
+                    let set_selected_job_detail = set_selected_job_detail;
+                    let set_status_text = set_status_text;
+                    async move {
+                        let _ = sync_selected_job(job_id, set_selected_job_detail, set_status_text)
+                            .await;
+                    }
+                });
+            } else {
+                set_selected_job_detail.set(None);
+            }
+        }
+    });
+
     view! {
         <main class="app-shell">
             <style>
                 {r#"
-                :root {
-                    --bg: #f4f0e8;
-                    --panel: #fffaf2;
-                    --ink: #1f1b16;
-                    --muted: #6d665d;
-                    --line: #d8ccba;
-                    --accent: #1f5a4d;
-                    --accent-soft: #d9ebe5;
-                }
-                * { box-sizing: border-box; }
-                body {
-                    margin: 0;
-                    background:
-                        radial-gradient(circle at top left, rgba(31, 90, 77, 0.16), transparent 30%),
-                        linear-gradient(180deg, #efe8da 0%, var(--bg) 100%);
-                    color: var(--ink);
-                    font-family: Georgia, 'Times New Roman', serif;
-                }
-                .app-shell {
-                    min-height: 100vh;
-                    padding: 24px;
-                }
-                .frame {
-                    display: grid;
-                    grid-template-columns: 340px 1fr;
-                    gap: 20px;
-                    max-width: 1280px;
-                    margin: 0 auto;
-                }
-                .panel {
-                    background: rgba(255, 250, 242, 0.92);
-                    border: 1px solid var(--line);
-                    border-radius: 20px;
-                    box-shadow: 0 18px 40px rgba(40, 34, 28, 0.08);
-                    backdrop-filter: blur(10px);
-                }
-                .sidebar {
-                    padding: 20px;
-                    display: flex;
-                    flex-direction: column;
-                    gap: 18px;
-                }
-                .content {
-                    padding: 24px;
-                    min-height: 70vh;
-                }
-                .eyebrow {
-                    text-transform: uppercase;
-                    letter-spacing: 0.12em;
-                    font-size: 0.75rem;
-                    color: var(--muted);
-                    margin: 0 0 8px 0;
-                }
-                h1, h2, h3, p {
-                    margin-top: 0;
-                }
-                h1 {
-                    font-size: 2.3rem;
-                    margin-bottom: 6px;
-                }
-                .status {
-                    color: var(--muted);
-                    font-size: 0.95rem;
-                    margin-bottom: 18px;
-                }
-                form {
-                    display: grid;
-                    gap: 10px;
-                }
-                input, textarea, button {
-                    font: inherit;
-                }
-                input, textarea {
-                    width: 100%;
-                    border: 1px solid var(--line);
-                    border-radius: 14px;
-                    padding: 12px 14px;
-                    background: #fff;
-                    color: var(--ink);
-                }
-                textarea {
-                    min-height: 110px;
-                    resize: vertical;
-                }
-                button {
-                    border: none;
-                    border-radius: 999px;
-                    padding: 11px 16px;
-                    background: var(--accent);
-                    color: white;
-                    cursor: pointer;
-                    transition: transform 120ms ease, opacity 120ms ease;
-                }
-                button:hover {
-                    transform: translateY(-1px);
-                    opacity: 0.95;
-                }
-                .thread-list {
-                    display: grid;
-                    gap: 10px;
-                }
-                .thread-card {
-                    border: 1px solid var(--line);
-                    border-radius: 16px;
-                    padding: 14px;
-                    background: #fff;
-                    cursor: pointer;
-                }
-                .thread-card.active {
-                    border-color: var(--accent);
-                    background: var(--accent-soft);
-                }
-                .thread-card h3 {
-                    margin-bottom: 6px;
-                    font-size: 1.05rem;
-                }
-                .thread-meta {
-                    display: flex;
-                    justify-content: space-between;
-                    gap: 12px;
-                    color: var(--muted);
-                    font-size: 0.85rem;
-                }
-                .message-list {
-                    display: grid;
-                    gap: 14px;
-                    margin: 24px 0;
-                }
-                .job-list {
-                    display: grid;
-                    gap: 12px;
-                    margin: 20px 0 28px 0;
-                }
-                .job-card {
-                    border: 1px solid var(--line);
-                    border-radius: 18px;
-                    padding: 16px;
-                    background: rgba(255, 255, 255, 0.85);
-                }
-                .job-card header {
-                    display: flex;
-                    justify-content: space-between;
-                    gap: 12px;
-                    margin-bottom: 8px;
-                }
-                .job-card h3 {
-                    margin: 0 0 4px 0;
-                    font-size: 1rem;
-                }
-                .job-meta {
-                    display: flex;
-                    flex-wrap: wrap;
-                    gap: 10px 16px;
-                    color: var(--muted);
-                    font-size: 0.85rem;
-                }
-                .message {
-                    border-radius: 18px;
-                    padding: 16px;
-                    border: 1px solid var(--line);
-                    background: #fff;
-                }
-                .message.user {
-                    background: #fcf3e8;
-                }
-                .message.assistant {
-                    background: #eef6f3;
-                }
-                .message.system {
-                    background: #f5f0fb;
-                }
-                .message header {
-                    display: flex;
-                    justify-content: space-between;
-                    gap: 12px;
-                    color: var(--muted);
-                    font-size: 0.82rem;
-                    margin-bottom: 8px;
-                }
-                .empty {
-                    padding: 36px 24px;
-                    border: 1px dashed var(--line);
-                    border-radius: 18px;
-                    text-align: center;
-                    color: var(--muted);
-                    background: rgba(255,255,255,0.6);
-                }
-                @media (max-width: 920px) {
-                    .frame {
-                        grid-template-columns: 1fr;
-                    }
-                }
+                :root { --bg:#f4f0e8; --panel:#fffaf2; --ink:#1f1b16; --muted:#6d665d; --line:#d8ccba; --accent:#1f5a4d; --accent-soft:#d9ebe5; }
+                * { box-sizing:border-box; }
+                body { margin:0; background:radial-gradient(circle at top left, rgba(31,90,77,.16), transparent 30%), linear-gradient(180deg, #efe8da 0%, var(--bg) 100%); color:var(--ink); font-family:Georgia, 'Times New Roman', serif; }
+                .app-shell { min-height:100vh; padding:24px; }
+                .frame { display:grid; grid-template-columns:340px 1fr; gap:20px; max-width:1280px; margin:0 auto; }
+                .panel { background:rgba(255,250,242,.92); border:1px solid var(--line); border-radius:20px; box-shadow:0 18px 40px rgba(40,34,28,.08); backdrop-filter:blur(10px); }
+                .sidebar { padding:20px; display:flex; flex-direction:column; gap:18px; }
+                .content { padding:24px; min-height:70vh; }
+                .eyebrow { text-transform:uppercase; letter-spacing:.12em; font-size:.75rem; color:var(--muted); margin:0 0 8px 0; }
+                h1,h2,h3,p { margin-top:0; }
+                h1 { font-size:2.3rem; margin-bottom:6px; }
+                .status { color:var(--muted); font-size:.95rem; margin-bottom:18px; }
+                form { display:grid; gap:10px; }
+                input,textarea,button { font:inherit; }
+                input,textarea { width:100%; border:1px solid var(--line); border-radius:14px; padding:12px 14px; background:#fff; color:var(--ink); }
+                textarea { min-height:110px; resize:vertical; }
+                button { border:none; border-radius:999px; padding:11px 16px; background:var(--accent); color:#fff; cursor:pointer; }
+                .thread-list,.message-list,.job-list,.job-event-list { display:grid; gap:12px; }
+                .thread-card,.job-card,.message,.job-event,.job-detail { border:1px solid var(--line); border-radius:18px; padding:16px; background:#fff; }
+                .thread-card,.job-card { cursor:pointer; }
+                .thread-card.active,.job-card.active { border-color:var(--accent); background:var(--accent-soft); }
+                .thread-meta,.job-meta,.message header,.job-event header { display:flex; justify-content:space-between; gap:12px; color:var(--muted); font-size:.82rem; }
+                .job-meta { flex-wrap:wrap; justify-content:flex-start; gap:10px 16px; }
+                .job-detail { background:rgba(255,255,255,.8); margin:0 0 24px 0; }
+                .job-event pre { margin:0; padding:12px; border-radius:12px; background:#f7f1e6; overflow-x:auto; white-space:pre-wrap; word-break:break-word; font-size:.82rem; }
+                .message.user { background:#fcf3e8; } .message.assistant { background:#eef6f3; } .message.system { background:#f5f0fb; }
+                .empty { padding:36px 24px; border:1px dashed var(--line); border-radius:18px; text-align:center; color:var(--muted); background:rgba(255,255,255,.6); }
+                @media (max-width:920px) { .frame { grid-template-columns:1fr; } }
                 "#}
             </style>
             <div class="frame">
@@ -369,59 +261,7 @@ pub fn App() -> impl IntoView {
                         <h1>"Threads"</h1>
                         <p class="status">{move || status_text.get()}</p>
                     </div>
-                    <form on:submit=move |ev: ev::SubmitEvent| {
-                        ev.prevent_default();
-                        let title = new_thread_title.get_untracked().trim().to_string();
-                        if title.is_empty() {
-                            set_status_text.set("Thread title is required.".to_string());
-                            return;
-                        }
-
-                        spawn_local({
-                            let set_new_thread_title = set_new_thread_title;
-                            let set_selected_thread = set_selected_thread;
-                            let set_selected_thread_id = set_selected_thread_id;
-                            let set_status_text = set_status_text;
-                            let set_threads = set_threads;
-                            let selected_thread_id = selected_thread_id;
-
-                            async move {
-                                match create_thread(&title).await {
-                                    Ok(thread) => {
-                                        let thread_id = thread.thread.id.clone();
-                                        set_new_thread_title.set(String::new());
-                                        set_selected_thread.set(Some(thread));
-                                        set_selected_thread_id.set(Some(thread_id));
-                                        set_status_text.set("Thread created.".to_string());
-
-                                        if let Err(error) = sync_thread_list(
-                                            set_threads,
-                                            selected_thread_id,
-                                            set_selected_thread_id,
-                                            set_status_text,
-                                        )
-                                        .await
-                                        {
-                                            set_status_text
-                                                .set(format!("Failed to refresh threads: {error}"));
-                                        }
-                                    }
-                                    Err(error) => {
-                                        set_status_text
-                                            .set(format!("Failed to create thread: {error}"));
-                                    }
-                                }
-                            }
-                        });
-                    }>
-                        <input
-                            type="text"
-                            placeholder="New thread title"
-                            prop:value=move || new_thread_title.get()
-                            on:input=move |ev| set_new_thread_title.set(event_target_value(&ev))
-                        />
-                        <button type="submit">"Create Thread"</button>
-                    </form>
+                    {render_thread_form(new_thread_title, set_new_thread_title, set_selected_thread, set_selected_thread_id, set_status_text, set_threads, selected_thread_id)}
                     <div class="thread-list">
                         <For
                             each=move || threads.get()
@@ -447,229 +287,437 @@ pub fn App() -> impl IntoView {
                     </div>
                 </section>
                 <section class="panel content">
-                    {move || {
-                        if let Some(thread) = selected_thread.get() {
-                            let thread_id = thread.thread.id.clone();
-                            let job_thread_id = thread_id.clone();
-                            let message_thread_id = thread_id.clone();
-                            let thread_record = thread.thread.clone();
-                            let jobs = thread.jobs.clone();
-                            let messages = thread.messages.clone();
-                            let has_jobs = !jobs.is_empty();
-                            view! {
-                                <div>
-                                    <p class="eyebrow">"Thread Detail"</p>
-                                    <h2>{thread_record.title.clone()}</h2>
-                                    <p class="status">{format!("Status: {} | Updated: {}", thread_record.status, thread_record.updated_at)}</p>
-                                    <p class="eyebrow">"Jobs"</p>
-                                    <div class="job-list">
-                                        <For
-                                            each=move || jobs.clone()
-                                            key=|job| job.id.clone()
-                                            children=move |job| {
-                                                view! {
-                                                    <article class="job-card">
-                                                        <header>
-                                                            <div>
-                                                                <h3>{job.title.clone()}</h3>
-                                                                <p class="status">{format!("{} · {}", job.short_id, job.status)}</p>
-                                                            </div>
-                                                            <strong>{job.repo_name.clone()}</strong>
-                                                        </header>
-                                                        <div class="job-meta">
-                                                            <span>{format!("Branch: {}", job.branch_name.clone().unwrap_or_else(|| "pending".to_string()))}</span>
-                                                            <span>{format!("Base: {}", job.base_branch.clone().unwrap_or_else(|| "main".to_string()))}</span>
-                                                            <span>{format!("Device: {}", job.device_id.clone().unwrap_or_else(|| "unassigned".to_string()))}</span>
-                                                            <span>{format!("Updated: {}", job.updated_at.clone())}</span>
-                                                        </div>
-                                                    </article>
-                                                }
-                                            }
-                                        />
-                                        {if has_jobs {
-                                            ().into_any()
-                                        } else {
-                                            view! {
-                                                <div class="empty">
-                                                    <p class="eyebrow">"No Jobs Yet"</p>
-                                                    <p>"Create a coding job from this thread to dispatch it to the primary edge device."</p>
-                                                </div>
-                                            }.into_any()
-                                        }}
-                                    </div>
-                                    <form on:submit=move |ev: ev::SubmitEvent| {
-                                        ev.prevent_default();
-                                        let title = new_job_title.get_untracked().trim().to_string();
-                                        let repo_name = new_job_repo.get_untracked().trim().to_string();
-                                        let base_branch = new_job_base_branch.get_untracked().trim().to_string();
-                                        let request_text = new_job_request_text.get_untracked().trim().to_string();
-
-                                        if title.is_empty() || repo_name.is_empty() || request_text.is_empty() {
-                                            set_status_text.set("Job title, repo, and request are required.".to_string());
-                                            return;
-                                        }
-
-                                        spawn_local({
-                                            let set_new_job_title = set_new_job_title;
-                                            let set_new_job_request_text = set_new_job_request_text;
-                                            let set_selected_thread = set_selected_thread;
-                                            let set_status_text = set_status_text;
-                                            let set_threads = set_threads;
-                                            let selected_thread_id = selected_thread_id;
-                                            let set_selected_thread_id = set_selected_thread_id;
-                                            let thread_id = job_thread_id.clone();
-
-                                            async move {
-                                                match create_job(&thread_id, &title, &repo_name, &base_branch, &request_text).await {
-                                                    Ok(job) => {
-                                                        set_new_job_title.set(String::new());
-                                                        set_new_job_request_text.set(String::new());
-                                                        set_status_text.set(format!("Job {} is {}.", job.short_id, job.status));
-
-                                                        if let Err(error) = sync_selected_thread(
-                                                            thread_id.clone(),
-                                                            set_selected_thread,
-                                                            set_status_text,
-                                                        ).await {
-                                                            set_status_text.set(format!("Failed to refresh thread: {error}"));
-                                                        }
-
-                                                        if let Err(error) = sync_thread_list(
-                                                            set_threads,
-                                                            selected_thread_id,
-                                                            set_selected_thread_id,
-                                                            set_status_text,
-                                                        ).await {
-                                                            set_status_text.set(format!("Failed to refresh threads: {error}"));
-                                                        }
-                                                    }
-                                                    Err(error) => {
-                                                        set_status_text.set(format!("Failed to create job: {error}"));
-                                                    }
-                                                }
-                                            }
-                                        });
-                                    }>
-                                        <input
-                                            type="text"
-                                            placeholder="Job title"
-                                            prop:value=move || new_job_title.get()
-                                            on:input=move |ev| set_new_job_title.set(event_target_value(&ev))
-                                        />
-                                        <input
-                                            type="text"
-                                            placeholder="Repository"
-                                            prop:value=move || new_job_repo.get()
-                                            on:input=move |ev| set_new_job_repo.set(event_target_value(&ev))
-                                        />
-                                        <input
-                                            type="text"
-                                            placeholder="Base branch"
-                                            prop:value=move || new_job_base_branch.get()
-                                            on:input=move |ev| set_new_job_base_branch.set(event_target_value(&ev))
-                                        />
-                                        <textarea
-                                            placeholder="Describe the coding task to dispatch"
-                                            prop:value=move || new_job_request_text.get()
-                                            on:input=move |ev| set_new_job_request_text.set(event_target_value(&ev))
-                                        />
-                                        <button type="submit">"Create Job"</button>
-                                    </form>
-                                    <div class="message-list">
-                                        <For
-                                            each=move || messages.clone()
-                                            key=|message| message.id.clone()
-                                            children=move |message| {
-                                                view! {
-                                                    <article class=format!("message {}", message.role)>
-                                                        <header>
-                                                            <strong>{message.role.clone()}</strong>
-                                                            <span>{message.created_at.clone()}</span>
-                                                        </header>
-                                                        <p>{message.content.clone()}</p>
-                                                    </article>
-                                                }
-                                            }
-                                        />
-                                    </div>
-                                    <form on:submit=move |ev: ev::SubmitEvent| {
-                                        ev.prevent_default();
-                                        let content = new_message_content.get_untracked().trim().to_string();
-                                        if content.is_empty() {
-                                            set_status_text.set("Message content is required.".to_string());
-                                            return;
-                                        }
-
-                                        spawn_local({
-                                            let set_new_message_content = set_new_message_content;
-                                            let set_selected_thread = set_selected_thread;
-                                            let set_status_text = set_status_text;
-                                            let set_threads = set_threads;
-                                            let selected_thread_id = selected_thread_id;
-                                            let set_selected_thread_id = set_selected_thread_id;
-                                            let thread_id = message_thread_id.clone();
-
-                                            async move {
-                                                match create_message(&thread_id, &content).await {
-                                                    Ok(_) => {
-                                                        set_new_message_content.set(String::new());
-                                                        set_status_text.set("Message posted.".to_string());
-
-                                                        if let Err(error) = sync_selected_thread(
-                                                            thread_id.clone(),
-                                                            set_selected_thread,
-                                                            set_status_text,
-                                                        )
-                                                        .await
-                                                        {
-                                                            set_status_text.set(format!(
-                                                                "Failed to refresh thread: {error}"
-                                                            ));
-                                                        }
-
-                                                        if let Err(error) = sync_thread_list(
-                                                            set_threads,
-                                                            selected_thread_id,
-                                                            set_selected_thread_id,
-                                                            set_status_text,
-                                                        )
-                                                        .await
-                                                        {
-                                                            set_status_text.set(format!(
-                                                                "Failed to refresh threads: {error}"
-                                                            ));
-                                                        }
-                                                    }
-                                                    Err(error) => {
-                                                        set_status_text
-                                                            .set(format!("Failed to post message: {error}"));
-                                                    }
-                                                }
-                                            }
-                                        });
-                                    }>
-                                        <textarea
-                                            placeholder="Post a message to this thread"
-                                            prop:value=move || new_message_content.get()
-                                            on:input=move |ev| set_new_message_content.set(event_target_value(&ev))
-                                        />
-                                        <button type="submit">"Post Message"</button>
-                                    </form>
-                                </div>
-                            }.into_any()
-                        } else {
-                            view! {
-                                <div class="empty">
-                                    <p class="eyebrow">"No Thread Selected"</p>
-                                    <h2>"Create or choose a thread"</h2>
-                                    <p>"Slice 1 is focused on the core conversation surface: thread list, thread detail, and persisted messages."</p>
-                                </div>
-                            }.into_any()
-                        }
-                    }}
+                    {move || render_thread_detail(
+                        selected_thread.get(),
+                        selected_job_id,
+                        selected_job_detail.get(),
+                        new_job_title,
+                        set_new_job_title,
+                        new_job_repo,
+                        set_new_job_repo,
+                        new_job_base_branch,
+                        set_new_job_base_branch,
+                        new_job_request_text,
+                        set_new_job_request_text,
+                        new_message_content,
+                        set_new_message_content,
+                        set_selected_thread,
+                        set_selected_thread_id,
+                        set_selected_job_id,
+                        set_status_text,
+                        set_threads,
+                        selected_thread_id,
+                    )}
                 </section>
             </div>
         </main>
+    }
+}
+
+fn render_thread_form(
+    new_thread_title: ReadSignal<String>,
+    set_new_thread_title: WriteSignal<String>,
+    set_selected_thread: WriteSignal<Option<ThreadDetail>>,
+    set_selected_thread_id: WriteSignal<Option<String>>,
+    set_status_text: WriteSignal<String>,
+    set_threads: WriteSignal<Vec<ThreadSummary>>,
+    selected_thread_id: ReadSignal<Option<String>>,
+) -> impl IntoView {
+    view! {
+        <form on:submit=move |ev: ev::SubmitEvent| {
+            ev.prevent_default();
+            let title = new_thread_title.get_untracked().trim().to_string();
+            if title.is_empty() {
+                set_status_text.set("Thread title is required.".to_string());
+                return;
+            }
+
+            spawn_local({
+                let set_new_thread_title = set_new_thread_title;
+                let set_selected_thread = set_selected_thread;
+                let set_selected_thread_id = set_selected_thread_id;
+                let set_status_text = set_status_text;
+                let set_threads = set_threads;
+                let selected_thread_id = selected_thread_id;
+
+                async move {
+                    match create_thread(&title).await {
+                        Ok(thread) => {
+                            let thread_id = thread.thread.id.clone();
+                            set_new_thread_title.set(String::new());
+                            set_selected_thread.set(Some(thread));
+                            set_selected_thread_id.set(Some(thread_id));
+                            set_status_text.set("Thread created.".to_string());
+                            let _ = sync_thread_list(
+                                set_threads,
+                                selected_thread_id,
+                                set_selected_thread_id,
+                                set_status_text,
+                            )
+                            .await;
+                        }
+                        Err(error) => set_status_text.set(format!("Failed to create thread: {error}")),
+                    }
+                }
+            });
+        }>
+            <input
+                type="text"
+                placeholder="New thread title"
+                prop:value=move || new_thread_title.get()
+                on:input=move |ev| set_new_thread_title.set(event_target_value(&ev))
+            />
+            <button type="submit">"Create Thread"</button>
+        </form>
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn render_thread_detail(
+    selected_thread: Option<ThreadDetail>,
+    selected_job_id: ReadSignal<Option<String>>,
+    selected_job_detail: Option<JobDetail>,
+    new_job_title: ReadSignal<String>,
+    set_new_job_title: WriteSignal<String>,
+    new_job_repo: ReadSignal<String>,
+    set_new_job_repo: WriteSignal<String>,
+    new_job_base_branch: ReadSignal<String>,
+    set_new_job_base_branch: WriteSignal<String>,
+    new_job_request_text: ReadSignal<String>,
+    set_new_job_request_text: WriteSignal<String>,
+    new_message_content: ReadSignal<String>,
+    set_new_message_content: WriteSignal<String>,
+    set_selected_thread: WriteSignal<Option<ThreadDetail>>,
+    set_selected_thread_id: WriteSignal<Option<String>>,
+    set_selected_job_id: WriteSignal<Option<String>>,
+    set_status_text: WriteSignal<String>,
+    set_threads: WriteSignal<Vec<ThreadSummary>>,
+    thread_selection: ReadSignal<Option<String>>,
+) -> AnyView {
+    let Some(thread) = selected_thread else {
+        return view! {
+            <div class="empty">
+                <p class="eyebrow">"No Thread Selected"</p>
+                <h2>"Create or choose a thread"</h2>
+                <p>"Select a thread to view messages, jobs, and runtime execution progress."</p>
+            </div>
+        }
+        .into_any();
+    };
+
+    let thread_id = thread.thread.id.clone();
+    let job_thread_id = thread_id.clone();
+    let message_thread_id = thread_id.clone();
+    let active_job = selected_job_id.get();
+    let jobs = thread.jobs.clone();
+    let messages = thread.messages.clone();
+    let has_jobs = !jobs.is_empty();
+
+    view! {
+        <div>
+            <p class="eyebrow">"Thread Detail"</p>
+            <h2>{thread.thread.title.clone()}</h2>
+            <p class="status">{format!("Status: {} | Updated: {}", thread.thread.status, thread.thread.updated_at)}</p>
+
+            <p class="eyebrow">"Jobs"</p>
+            <div class="job-list">
+                <For
+                    each=move || jobs.clone()
+                    key=|job| job.id.clone()
+                    children=move |job| {
+                        let card_job_id = job.id.clone();
+                        let is_active = active_job.clone() == Some(card_job_id.clone());
+                        view! {
+                            <article
+                                class=("job-card", true)
+                                class:active=is_active
+                                on:click=move |_| set_selected_job_id.set(Some(card_job_id.clone()))
+                            >
+                                <header>
+                                    <strong>{job.title.clone()}</strong>
+                                    <span>{format!("{} - {}", job.short_id, job.status)}</span>
+                                </header>
+                                <div class="job-meta">
+                                    <span>{format!("Repo: {}", job.repo_name.clone())}</span>
+                                    <span>{format!("Branch: {}", job.branch_name.clone().unwrap_or_else(|| "pending".to_string()))}</span>
+                                    <span>{format!("Device: {}", job.device_id.clone().unwrap_or_else(|| "unassigned".to_string()))}</span>
+                                </div>
+                            </article>
+                        }
+                    }
+                />
+                {if has_jobs {
+                    ().into_any()
+                } else {
+                    view! {
+                        <div class="empty">
+                            <p class="eyebrow">"No Jobs Yet"</p>
+                            <p>"Create a coding job from this thread to dispatch it to the primary edge device."</p>
+                        </div>
+                    }.into_any()
+                }}
+            </div>
+
+            {render_job_detail(selected_job_detail)}
+
+            {render_job_form(
+                job_thread_id,
+                new_job_title,
+                set_new_job_title,
+                new_job_repo,
+                set_new_job_repo,
+                new_job_base_branch,
+                set_new_job_base_branch,
+                new_job_request_text,
+                set_new_job_request_text,
+                set_selected_thread,
+                set_selected_thread_id,
+                set_selected_job_id,
+                set_status_text,
+                set_threads,
+                thread_selection,
+            )}
+
+            <div class="message-list">
+                <For
+                    each=move || messages.clone()
+                    key=|message| message.id.clone()
+                    children=move |message| {
+                        view! {
+                            <article class=format!("message {}", message.role)>
+                                <header>
+                                    <strong>{message.role.clone()}</strong>
+                                    <span>{message.created_at.clone()}</span>
+                                </header>
+                                <p>{message.content.clone()}</p>
+                            </article>
+                        }
+                    }
+                />
+            </div>
+
+            {render_message_form(
+                message_thread_id,
+                new_message_content,
+                set_new_message_content,
+                set_selected_thread,
+                set_selected_thread_id,
+                set_status_text,
+                set_threads,
+                thread_selection,
+            )}
+        </div>
+    }
+    .into_any()
+}
+
+fn render_job_detail(selected_job_detail: Option<JobDetail>) -> impl IntoView {
+    if let Some(job_detail) = selected_job_detail {
+        view! {
+            <section class="job-detail">
+                <p class="eyebrow">"Selected Job"</p>
+                <h3>{job_detail.job.title.clone()}</h3>
+                <p class="status">
+                    {format!(
+                        "{} | {} | {}",
+                        job_detail.job.short_id,
+                        job_detail.job.status,
+                        job_detail.job.device_id.clone().unwrap_or_else(|| "unassigned".to_string())
+                    )}
+                </p>
+                <div class="job-meta">
+                    <span>{format!("Repo: {}", job_detail.job.repo_name.clone())}</span>
+                    <span>{format!("Branch: {}", job_detail.job.branch_name.clone().unwrap_or_else(|| "pending".to_string()))}</span>
+                    <span>{format!("Base: {}", job_detail.job.base_branch.clone().unwrap_or_else(|| "main".to_string()))}</span>
+                    <span>{format!("Updated: {}", job_detail.job.updated_at.clone())}</span>
+                </div>
+                <div class="job-event-list">
+                    <For
+                        each=move || job_detail.events.clone()
+                        key=|event| event.id.clone()
+                        children=move |event| {
+                            let payload = format_json_value(&event.payload_json);
+                            view! {
+                                <article class="job-event">
+                                    <header>
+                                        <strong>{event.event_type.clone()}</strong>
+                                        <span>{event.created_at.clone()}</span>
+                                    </header>
+                                    <pre>{payload}</pre>
+                                </article>
+                            }
+                        }
+                    />
+                </div>
+            </section>
+        }
+        .into_any()
+    } else {
+        view! {
+            <div class="empty">
+                <p class="eyebrow">"No Job Selected"</p>
+                <p>"Choose a job card to inspect the live execution detail and event history."</p>
+            </div>
+        }
+        .into_any()
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn render_job_form(
+    thread_id: String,
+    new_job_title: ReadSignal<String>,
+    set_new_job_title: WriteSignal<String>,
+    new_job_repo: ReadSignal<String>,
+    set_new_job_repo: WriteSignal<String>,
+    new_job_base_branch: ReadSignal<String>,
+    set_new_job_base_branch: WriteSignal<String>,
+    new_job_request_text: ReadSignal<String>,
+    set_new_job_request_text: WriteSignal<String>,
+    set_selected_thread: WriteSignal<Option<ThreadDetail>>,
+    set_selected_thread_id: WriteSignal<Option<String>>,
+    set_selected_job_id: WriteSignal<Option<String>>,
+    set_status_text: WriteSignal<String>,
+    set_threads: WriteSignal<Vec<ThreadSummary>>,
+    selected_thread_id: ReadSignal<Option<String>>,
+) -> impl IntoView {
+    view! {
+        <form on:submit=move |ev: ev::SubmitEvent| {
+            ev.prevent_default();
+            let title = new_job_title.get_untracked().trim().to_string();
+            let repo_name = new_job_repo.get_untracked().trim().to_string();
+            let base_branch = new_job_base_branch.get_untracked().trim().to_string();
+            let request_text = new_job_request_text.get_untracked().trim().to_string();
+
+            if title.is_empty() || repo_name.is_empty() || request_text.is_empty() {
+                set_status_text.set("Job title, repo, and request are required.".to_string());
+                return;
+            }
+
+            spawn_local({
+                let set_new_job_title = set_new_job_title;
+                let set_new_job_request_text = set_new_job_request_text;
+                let set_selected_thread = set_selected_thread;
+                let set_selected_thread_id = set_selected_thread_id;
+                let set_selected_job_id = set_selected_job_id;
+                let set_status_text = set_status_text;
+                let set_threads = set_threads;
+                let selected_thread_id = selected_thread_id;
+                let thread_id = thread_id.clone();
+
+                async move {
+                    match create_job(&thread_id, &title, &repo_name, &base_branch, &request_text).await {
+                        Ok(job) => {
+                            set_new_job_title.set(String::new());
+                            set_new_job_request_text.set(String::new());
+                            set_selected_job_id.set(Some(job.id.clone()));
+                            set_status_text.set(format!("Job {} is {}.", job.short_id, job.status));
+                            let _ = sync_selected_thread(
+                                thread_id.clone(),
+                                set_selected_thread,
+                                set_status_text,
+                            )
+                            .await;
+                            let _ = sync_thread_list(
+                                set_threads,
+                                selected_thread_id,
+                                set_selected_thread_id,
+                                set_status_text,
+                            )
+                            .await;
+                        }
+                        Err(error) => set_status_text.set(format!("Failed to create job: {error}")),
+                    }
+                }
+            });
+        }>
+            <input
+                type="text"
+                placeholder="Job title"
+                prop:value=move || new_job_title.get()
+                on:input=move |ev| set_new_job_title.set(event_target_value(&ev))
+            />
+            <input
+                type="text"
+                placeholder="Repository"
+                prop:value=move || new_job_repo.get()
+                on:input=move |ev| set_new_job_repo.set(event_target_value(&ev))
+            />
+            <input
+                type="text"
+                placeholder="Base branch"
+                prop:value=move || new_job_base_branch.get()
+                on:input=move |ev| set_new_job_base_branch.set(event_target_value(&ev))
+            />
+            <textarea
+                placeholder="Describe the coding task to dispatch"
+                prop:value=move || new_job_request_text.get()
+                on:input=move |ev| set_new_job_request_text.set(event_target_value(&ev))
+            />
+            <button type="submit">"Create Job"</button>
+        </form>
+    }
+}
+
+fn render_message_form(
+    thread_id: String,
+    new_message_content: ReadSignal<String>,
+    set_new_message_content: WriteSignal<String>,
+    set_selected_thread: WriteSignal<Option<ThreadDetail>>,
+    set_selected_thread_id: WriteSignal<Option<String>>,
+    set_status_text: WriteSignal<String>,
+    set_threads: WriteSignal<Vec<ThreadSummary>>,
+    selected_thread_id: ReadSignal<Option<String>>,
+) -> impl IntoView {
+    view! {
+        <form on:submit=move |ev: ev::SubmitEvent| {
+            ev.prevent_default();
+            let content = new_message_content.get_untracked().trim().to_string();
+            if content.is_empty() {
+                set_status_text.set("Message content is required.".to_string());
+                return;
+            }
+
+            spawn_local({
+                let set_new_message_content = set_new_message_content;
+                let set_selected_thread = set_selected_thread;
+                let set_selected_thread_id = set_selected_thread_id;
+                let set_status_text = set_status_text;
+                let set_threads = set_threads;
+                let selected_thread_id = selected_thread_id;
+                let thread_id = thread_id.clone();
+
+                async move {
+                    match create_message(&thread_id, &content).await {
+                        Ok(_) => {
+                            set_new_message_content.set(String::new());
+                            set_status_text.set("Message posted.".to_string());
+                            let _ = sync_selected_thread(
+                                thread_id.clone(),
+                                set_selected_thread,
+                                set_status_text,
+                            )
+                            .await;
+                            let _ = sync_thread_list(
+                                set_threads,
+                                selected_thread_id,
+                                set_selected_thread_id,
+                                set_status_text,
+                            )
+                            .await;
+                        }
+                        Err(error) => set_status_text.set(format!("Failed to post message: {error}")),
+                    }
+                }
+            });
+        }>
+            <textarea
+                placeholder="Post a message to this thread"
+                prop:value=move || new_message_content.get()
+                on:input=move |ev| set_new_message_content.set(event_target_value(&ev))
+            />
+            <button type="submit">"Post Message"</button>
+        </form>
     }
 }
 
@@ -713,6 +761,17 @@ async fn sync_selected_thread(
     Ok(())
 }
 
+async fn sync_selected_job(
+    job_id: String,
+    set_selected_job_detail: WriteSignal<Option<JobDetail>>,
+    set_status_text: WriteSignal<String>,
+) -> Result<(), String> {
+    let job = fetch_job(&job_id).await?;
+    set_selected_job_detail.set(Some(job));
+    set_status_text.set("Job detail loaded.".to_string());
+    Ok(())
+}
+
 fn api_base() -> String {
     let host = web_sys::window()
         .and_then(|window| window.location().hostname().ok())
@@ -735,6 +794,16 @@ async fn fetch_threads() -> Result<Vec<ThreadSummary>, String> {
 async fn fetch_thread(thread_id: &str) -> Result<ThreadDetail, String> {
     decode_json(
         Request::get(&format!("{}/threads/{thread_id}", api_base()))
+            .send()
+            .await
+            .map_err(|error| error.to_string())?,
+    )
+    .await
+}
+
+async fn fetch_job(job_id: &str) -> Result<JobDetail, String> {
+    decode_json(
+        Request::get(&format!("{}/jobs/{job_id}", api_base()))
             .send()
             .await
             .map_err(|error| error.to_string())?,
@@ -812,4 +881,8 @@ where
     }
 
     serde_json::from_str::<T>(&body).map_err(|error| error.to_string())
+}
+
+fn format_json_value(value: &Value) -> String {
+    serde_json::to_string_pretty(value).unwrap_or_else(|_| value.to_string())
 }
