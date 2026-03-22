@@ -1,4 +1,4 @@
-FROM rust:1.88-bookworm
+FROM rust:1.88-bookworm AS build
 WORKDIR /app
 
 RUN cargo install trunk --locked
@@ -10,6 +10,12 @@ COPY index.html index.html
 COPY src src
 COPY public public
 
+RUN trunk build --release
+
+FROM nginx:1.29-alpine
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+COPY --from=build /app/dist /usr/share/nginx/html
+
 EXPOSE 3000
 
-CMD ["trunk", "serve", "--release", "--address", "0.0.0.0", "--port", "3000"]
+CMD ["nginx", "-g", "daemon off;"]
