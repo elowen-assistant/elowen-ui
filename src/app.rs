@@ -59,6 +59,7 @@ struct ThreadDetail {
     thread: ThreadRecord,
     messages: Vec<MessageRecord>,
     jobs: Vec<JobRecord>,
+    related_notes: Vec<NoteRecord>,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq)]
@@ -68,7 +69,23 @@ struct JobDetail {
     execution_report_json: Value,
     summary: Option<SummaryRecord>,
     approvals: Vec<ApprovalRecord>,
+    related_notes: Vec<NoteRecord>,
     events: Vec<JobEventRecord>,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+struct NoteRecord {
+    note_id: String,
+    title: String,
+    slug: String,
+    summary: String,
+    tags: Vec<String>,
+    aliases: Vec<String>,
+    note_type: String,
+    source_kind: Option<String>,
+    source_id: Option<String>,
+    current_revision_id: String,
+    updated_at: String,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq)]
@@ -125,6 +142,16 @@ struct ResolveApprovalRequest {
     status: String,
     resolved_by: String,
     reason: String,
+}
+
+#[derive(Debug, Serialize)]
+struct PromoteJobNoteRequest {
+    title: Option<String>,
+    summary: Option<String>,
+    body_markdown: Option<String>,
+    tags: Vec<String>,
+    aliases: Vec<String>,
+    note_type: Option<String>,
 }
 
 #[component]
@@ -307,14 +334,16 @@ pub fn App() -> impl IntoView {
                         linear-gradient(180deg, #efe8da 0%, var(--bg) 100%);
                     color: var(--ink);
                     font-family: Georgia, 'Times New Roman', serif;
+                    overflow-x: hidden;
                 }
-                .app-shell { min-height: 100vh; padding: 24px; }
+                .app-shell { min-height: 100vh; padding: 24px; overflow-x: hidden; }
                 .frame {
                     display: grid;
                     grid-template-columns: 340px 1fr;
                     gap: 20px;
                     max-width: 1280px;
                     margin: 0 auto;
+                    align-items: start;
                 }
                 .panel {
                     background: rgba(255, 250, 242, 0.92);
@@ -322,9 +351,10 @@ pub fn App() -> impl IntoView {
                     border-radius: 20px;
                     box-shadow: 0 18px 40px rgba(40, 34, 28, 0.08);
                     backdrop-filter: blur(10px);
+                    min-width: 0;
                 }
                 .sidebar { padding: 20px; display: flex; flex-direction: column; gap: 18px; }
-                .content { padding: 24px; min-height: 70vh; }
+                .content { padding: 24px; min-height: 70vh; min-width: 0; overflow-x: hidden; }
                 .eyebrow {
                     text-transform: uppercase;
                     letter-spacing: 0.12em;
@@ -355,6 +385,9 @@ pub fn App() -> impl IntoView {
                     cursor: pointer;
                 }
                 .thread-list { display: grid; gap: 10px; }
+                .thread-list, .job-list, .message-list, .job-event-list, .summary-block, .approval-list, .report-grid {
+                    min-width: 0;
+                }
                 .thread-card {
                     border: 1px solid var(--line);
                     border-radius: 16px;
@@ -371,7 +404,7 @@ pub fn App() -> impl IntoView {
                     font-size: 0.82rem;
                 }
                 .message-list, .job-list, .job-event-list { display: grid; gap: 12px; }
-                .job-card, .message, .job-event, .job-detail, .approval-card, .report-grid article {
+                .job-card, .message, .job-event, .job-detail, .approval-card, .report-grid article, .note-card {
                     border: 1px solid var(--line);
                     border-radius: 18px;
                     padding: 16px;
@@ -381,6 +414,13 @@ pub fn App() -> impl IntoView {
                 .job-card.active { border-color: var(--accent); background: var(--accent-soft); }
                 .job-meta { flex-wrap: wrap; justify-content: flex-start; gap: 10px 16px; }
                 .job-detail { background: rgba(255, 255, 255, 0.8); margin: 0 0 24px 0; }
+                pre {
+                    margin: 0;
+                    max-width: 100%;
+                    overflow-x: auto;
+                    white-space: pre-wrap;
+                    word-break: break-word;
+                }
                 .report-grid {
                     display: grid;
                     grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
@@ -388,6 +428,11 @@ pub fn App() -> impl IntoView {
                     margin: 16px 0;
                 }
                 .summary-block, .approval-list {
+                    display: grid;
+                    gap: 12px;
+                    margin: 16px 0;
+                }
+                .note-list {
                     display: grid;
                     gap: 12px;
                     margin: 16px 0;
@@ -520,6 +565,7 @@ pub fn App() -> impl IntoView {
                             let thread_record = thread.thread.clone();
                             let jobs = thread.jobs.clone();
                             let messages = thread.messages.clone();
+                            let thread_notes = thread.related_notes.clone();
                             let has_jobs = !jobs.is_empty();
                             let active_job_id = selected_job_id.get();
 
@@ -528,6 +574,39 @@ pub fn App() -> impl IntoView {
                                     <p class="eyebrow">"Thread Detail"</p>
                                     <h2>{thread_record.title.clone()}</h2>
                                     <p class="status">{format!("Status: {} | Updated: {}", thread_record.status, thread_record.updated_at)}</p>
+
+                                    <div class="note-list">
+                                        <p class="eyebrow">"Related Notes"</p>
+                                        {if thread_notes.is_empty() {
+                                            view! {
+                                                <div class="empty">
+                                                    <p>"No related notes were found for this thread yet."</p>
+                                                </div>
+                                            }.into_any()
+                                        } else {
+                                            view! {
+                                                <For
+                                                    each=move || thread_notes.clone()
+                                                    key=|note| note.note_id.clone()
+                                                    children=move |note| {
+                                                        view! {
+                                                            <article class="note-card">
+                                                                <header>
+                                                                    <strong>{note.title.clone()}</strong>
+                                                                    <span>{note.note_type.clone()}</span>
+                                                                </header>
+                                                                <p>{note.summary.clone()}</p>
+                                                                <div class="job-meta">
+                                                                    <span>{note.slug.clone()}</span>
+                                                                    <span>{format!("Updated: {}", note.updated_at.clone())}</span>
+                                                                </div>
+                                                            </article>
+                                                        }
+                                                    }
+                                                />
+                                            }.into_any()
+                                        }}
+                                    </div>
 
                                     <p class="eyebrow">"Jobs"</p>
                                     <div class="job-list">
@@ -581,6 +660,7 @@ pub fn App() -> impl IntoView {
                                             let changed_files = report_array_strings(&execution_report, "changed_files");
                                             let git_status = report_array_strings(&execution_report, "git_status");
                                             let approvals = job_detail.approvals.clone();
+                                            let related_notes = job_detail.related_notes.clone();
                                             let summary = job_detail.summary.clone();
                                             view! {
                                                 <section class="job-detail">
@@ -621,6 +701,8 @@ pub fn App() -> impl IntoView {
                                                     <div class="summary-block">
                                                         <p class="eyebrow">"Summary"</p>
                                                         {if let Some(summary) = summary {
+                                                            let promote_job_id = job_detail.job.id.clone();
+                                                            let promote_thread_id = thread_id.clone();
                                                             view! {
                                                                 <article>
                                                                     <div class="job-meta">
@@ -628,6 +710,44 @@ pub fn App() -> impl IntoView {
                                                                         <span>{summary.created_at}</span>
                                                                     </div>
                                                                     <div class="summary-body">{summary.content}</div>
+                                                                    <div class="approval-actions">
+                                                                        <button
+                                                                            type="button"
+                                                                            on:click=move |_| {
+                                                                                spawn_local({
+                                                                                    let job_id = promote_job_id.clone();
+                                                                                    let thread_id = promote_thread_id.clone();
+                                                                                    let set_selected_job_detail = set_selected_job_detail;
+                                                                                    let set_selected_thread = set_selected_thread;
+                                                                                    let set_status_text = set_status_text;
+                                                                                    async move {
+                                                                                        match promote_job_note(&job_id).await {
+                                                                                            Ok(note) => {
+                                                                                                set_status_text.set(format!("Promoted note: {}", note.title));
+                                                                                                let _ = sync_selected_job(
+                                                                                                    job_id,
+                                                                                                    set_selected_job_detail,
+                                                                                                    set_status_text,
+                                                                                                )
+                                                                                                .await;
+                                                                                                let _ = sync_selected_thread(
+                                                                                                    thread_id,
+                                                                                                    set_selected_thread,
+                                                                                                    set_status_text,
+                                                                                                )
+                                                                                                .await;
+                                                                                            }
+                                                                                            Err(error) => {
+                                                                                                set_status_text.set(format!("Failed to promote note: {error}"));
+                                                                                            }
+                                                                                        }
+                                                                                    }
+                                                                                });
+                                                                            }
+                                                                        >
+                                                                            "Promote Summary To Notes"
+                                                                        </button>
+                                                                    </div>
                                                                 </article>
                                                             }.into_any()
                                                         } else {
@@ -650,6 +770,39 @@ pub fn App() -> impl IntoView {
                                                             <p><strong>"Git status"</strong></p>
                                                             <pre>{format_string_list(&git_status)}</pre>
                                                         </article>
+                                                    </div>
+
+                                                    <div class="note-list">
+                                                        <p class="eyebrow">"Job Notes"</p>
+                                                        {if related_notes.is_empty() {
+                                                            view! {
+                                                                <div class="empty">
+                                                                    <p>"No related notes were found for this job yet."</p>
+                                                                </div>
+                                                            }.into_any()
+                                                        } else {
+                                                            view! {
+                                                                <For
+                                                                    each=move || related_notes.clone()
+                                                                    key=|note| note.note_id.clone()
+                                                                    children=move |note| {
+                                                                        view! {
+                                                                            <article class="note-card">
+                                                                                <header>
+                                                                                    <strong>{note.title.clone()}</strong>
+                                                                                    <span>{note.note_type.clone()}</span>
+                                                                                </header>
+                                                                                <p>{note.summary.clone()}</p>
+                                                                                <div class="job-meta">
+                                                                                    <span>{note.slug.clone()}</span>
+                                                                                    <span>{format!("Updated: {}", note.updated_at.clone())}</span>
+                                                                                </div>
+                                                                            </article>
+                                                                        }
+                                                                    }
+                                                                />
+                                                            }.into_any()
+                                                        }}
                                                     </div>
 
                                                     <div class="approval-list">
@@ -1118,6 +1271,25 @@ async fn create_job(
     .await?;
 
     Ok(detail.job)
+}
+
+async fn promote_job_note(job_id: &str) -> Result<NoteRecord, String> {
+    decode_json(
+        Request::post(&format!("{}/jobs/{job_id}/notes/promote", api_base()))
+            .json(&PromoteJobNoteRequest {
+                title: None,
+                summary: None,
+                body_markdown: None,
+                tags: vec!["job".to_string(), "promoted".to_string()],
+                aliases: Vec::new(),
+                note_type: Some("job-summary".to_string()),
+            })
+            .map_err(|error| error.to_string())?
+            .send()
+            .await
+            .map_err(|error| error.to_string())?,
+    )
+    .await
 }
 
 async fn resolve_approval(
