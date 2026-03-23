@@ -271,16 +271,18 @@ pub fn App() -> impl IntoView {
 
         move |_| {
             if let Some(thread) = selected_thread.get() {
-                let current_job_id = selected_job_id.get();
+                let current_job_id = selected_job_id.get_untracked();
                 let next_job_id = if current_job_id
                     .as_ref()
                     .is_some_and(|job_id| thread.jobs.iter().any(|job| job.id == *job_id))
                 {
-                    current_job_id
+                    current_job_id.clone()
                 } else {
                     thread.jobs.first().map(|job| job.id.clone())
                 };
-                set_selected_job_id.set(next_job_id);
+                if next_job_id != current_job_id {
+                    set_selected_job_id.set(next_job_id);
+                }
             } else {
                 set_selected_job_id.set(None);
                 set_selected_job_detail.set(None);
