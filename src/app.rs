@@ -33,6 +33,7 @@ struct MessageRecord {
 struct JobRecord {
     id: String,
     short_id: String,
+    correlation_id: String,
     title: String,
     status: String,
     result: Option<String>,
@@ -48,6 +49,7 @@ struct JobRecord {
 #[derive(Clone, Debug, Deserialize, PartialEq)]
 struct JobEventRecord {
     id: String,
+    correlation_id: String,
     event_type: String,
     payload_json: Value,
     created_at: String,
@@ -677,6 +679,7 @@ pub fn App() -> impl IntoView {
                                                         )}
                                                     </p>
                                                     <div class="job-meta">
+                                                        <span>{format!("Correlation: {}", job_detail.job.correlation_id.clone())}</span>
                                                         <span>{format!("Repo: {}", job_detail.job.repo_name.clone())}</span>
                                                         <span>{format!("Branch: {}", job_detail.job.branch_name.clone().unwrap_or_else(|| "pending".to_string()))}</span>
                                                         <span>{format!("Base: {}", job_detail.job.base_branch.clone().unwrap_or_else(|| "main".to_string()))}</span>
@@ -935,6 +938,7 @@ pub fn App() -> impl IntoView {
                                                                             <strong>{event.event_type.clone()}</strong>
                                                                             <span>{event.created_at.clone()}</span>
                                                                         </header>
+                                                                        <p class="status">{format!("Correlation: {}", event.correlation_id.clone())}</p>
                                                                         <pre>{payload}</pre>
                                                                     </article>
                                                                 }
