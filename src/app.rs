@@ -34,6 +34,7 @@ struct JobRecord {
     id: String,
     short_id: String,
     correlation_id: String,
+    thread_id: String,
     title: String,
     status: String,
     result: Option<String>,
@@ -159,8 +160,10 @@ struct PromoteJobNoteRequest {
 #[component]
 pub fn App() -> impl IntoView {
     let (threads, set_threads) = signal(Vec::<ThreadSummary>::new());
+    let (jobs, set_jobs) = signal(Vec::<JobRecord>::new());
     let (selected_thread_id, set_selected_thread_id) = signal(None::<String>);
     let (selected_thread, set_selected_thread) = signal(None::<ThreadDetail>);
+    let (preferred_job_id, set_preferred_job_id) = signal(None::<String>);
     let (selected_job_id, set_selected_job_id) = signal(None::<String>);
     let (selected_job_detail, set_selected_job_detail) = signal(None::<JobDetail>);
     let (new_thread_title, set_new_thread_title) = signal(String::new());
@@ -169,10 +172,11 @@ pub fn App() -> impl IntoView {
     let (new_job_repo, set_new_job_repo) = signal(String::from("elowen-api"));
     let (new_job_base_branch, set_new_job_base_branch) = signal(String::from("main"));
     let (new_job_request_text, set_new_job_request_text) = signal(String::new());
-    let (status_text, set_status_text) = signal(String::from("Loading threads..."));
+    let (status_text, set_status_text) = signal(String::from("Loading threads and jobs..."));
 
     spawn_local({
         let set_threads = set_threads;
+        let set_jobs = set_jobs;
         let selected_thread_id = selected_thread_id;
         let set_selected_thread_id = set_selected_thread_id;
         let set_status_text = set_status_text;
@@ -190,6 +194,10 @@ pub fn App() -> impl IntoView {
             .await
             {
                 set_status_text.set(format!("Failed to load threads: {error}"));
+            }
+
+            if let Err(error) = sync_job_list(set_jobs).await {
+                set_status_text.set(format!("Failed to load jobs: {error}"));
             }
 
             if let Some(thread_id) = selected_thread_id.get_untracked() {
@@ -212,6 +220,10 @@ pub fn App() -> impl IntoView {
                 .await
                 {
                     set_status_text.set(format!("Failed to poll threads: {error}"));
+                }
+
+                if let Err(error) = sync_job_list(set_jobs).await {
+                    set_status_text.set(format!("Failed to poll jobs: {error}"));
                 }
 
                 if let Some(thread_id) = selected_thread_id.get_untracked() {
@@ -267,14 +279,22 @@ pub fn App() -> impl IntoView {
 
     Effect::new({
         let selected_thread = selected_thread;
+        let preferred_job_id = preferred_job_id;
         let selected_job_id = selected_job_id;
+        let set_preferred_job_id = set_preferred_job_id;
         let set_selected_job_id = set_selected_job_id;
         let set_selected_job_detail = set_selected_job_detail;
 
         move |_| {
             if let Some(thread) = selected_thread.get() {
+                let preferred_job_id = preferred_job_id.get_untracked();
                 let current_job_id = selected_job_id.get_untracked();
-                let next_job_id = if current_job_id
+                let next_job_id = if preferred_job_id
+                    .as_ref()
+                    .is_some_and(|job_id| thread.jobs.iter().any(|job| job.id == *job_id))
+                {
+                    preferred_job_id.clone()
+                } else if current_job_id
                     .as_ref()
                     .is_some_and(|job_id| thread.jobs.iter().any(|job| job.id == *job_id))
                 {
@@ -284,6 +304,9 @@ pub fn App() -> impl IntoView {
                 };
                 if next_job_id != current_job_id {
                     set_selected_job_id.set(next_job_id);
+                }
+                if preferred_job_id.is_some() {
+                    set_preferred_job_id.set(None);
                 }
             } else {
                 set_selected_job_id.set(None);
@@ -388,6 +411,8 @@ pub fn App() -> impl IntoView {
                     color: white;
                     cursor: pointer;
                 }
+                .sidebar-section { display: grid; gap: 12px; }
+                .sidebar-section + .sidebar-section { margin-top: 8px; }
                 .thread-list { display: grid; gap: 10px; }
                 .thread-list, .job-list, .message-list, .job-event-list, .summary-block, .approval-list, .report-grid {
                     min-width: 0;
@@ -416,6 +441,21 @@ pub fn App() -> impl IntoView {
                 }
                 .job-card { cursor: pointer; }
                 .job-card.active { border-color: var(--accent); background: var(--accent-soft); }
+                .job-card.compact {
+                    padding: 14px;
+                    gap: 8px;
+                }
+                .job-card.compact h3 {
+                    margin-bottom: 6px;
+                    font-size: 1rem;
+                }
+                .job-card.compact .status {
+                    margin-bottom: 0;
+                    font-size: 0.85rem;
+                }
+                .job-card.compact .job-meta {
+                    font-size: 0.8rem;
+                }
                 .job-meta { flex-wrap: wrap; justify-content: flex-start; gap: 10px 16px; }
                 .job-detail { background: rgba(255, 255, 255, 0.8); margin: 0 0 24px 0; }
                 pre {
@@ -536,28 +576,85 @@ pub fn App() -> impl IntoView {
                         />
                         <button type="submit">"Create Thread"</button>
                     </form>
-                    <div class="thread-list">
-                        <For
-                            each=move || threads.get()
-                            key=|thread| thread.id.clone()
-                            children=move |thread| {
-                                let active_thread_id = thread.id.clone();
-                                let click_thread_id = thread.id.clone();
-                                view! {
-                                    <article
-                                        class=("thread-card", true)
-                                        class:active=move || selected_thread_id.get() == Some(active_thread_id.clone())
-                                        on:click=move |_| set_selected_thread_id.set(Some(click_thread_id.clone()))
-                                    >
-                                        <h3>{thread.title.clone()}</h3>
-                                        <div class="thread-meta">
-                                            <span>{format!("{} messages", thread.message_count)}</span>
-                                            <span>{thread.status.clone()}</span>
-                                        </div>
-                                    </article>
+                    <div class="sidebar-section">
+                        <p class="eyebrow">"Threads"</p>
+                        <div class="thread-list">
+                            <For
+                                each=move || threads.get()
+                                key=|thread| thread.id.clone()
+                                children=move |thread| {
+                                    let active_thread_id = thread.id.clone();
+                                    let click_thread_id = thread.id.clone();
+                                    view! {
+                                        <article
+                                            class=("thread-card", true)
+                                            class:active=move || selected_thread_id.get() == Some(active_thread_id.clone())
+                                            on:click=move |_| set_selected_thread_id.set(Some(click_thread_id.clone()))
+                                        >
+                                            <h3>{thread.title.clone()}</h3>
+                                            <div class="thread-meta">
+                                                <span>{format!("{} messages", thread.message_count)}</span>
+                                                <span>{thread.status.clone()}</span>
+                                            </div>
+                                        </article>
+                                    }
                                 }
-                            }
-                        />
+                            />
+                        </div>
+                    </div>
+                    <div class="sidebar-section">
+                        <p class="eyebrow">"Global Jobs"</p>
+                        <div class="job-list">
+                            <For
+                                each=move || jobs.get()
+                                key=|job| job.id.clone()
+                                children=move |job| {
+                                    let active_job_id = job.id.clone();
+                                    let click_job_id = job.id.clone();
+                                    let click_thread_id = job.thread_id.clone();
+                                    let thread_label = if job.thread_id.len() > 8 {
+                                        job.thread_id[..8].to_string()
+                                    } else {
+                                        job.thread_id.clone()
+                                    };
+                                    view! {
+                                        <article
+                                            class=("job-card", true)
+                                            class=("compact", true)
+                                            class:active=move || selected_job_id.get() == Some(active_job_id.clone())
+                                            on:click=move |_| {
+                                                set_preferred_job_id.set(Some(click_job_id.clone()));
+                                                set_selected_job_id.set(Some(click_job_id.clone()));
+                                                set_selected_thread_id.set(Some(click_thread_id.clone()));
+                                            }
+                                        >
+                                            <header>
+                                                <div>
+                                                    <h3>{job.title.clone()}</h3>
+                                                    <p class="status">{format!("{} - {}", job.short_id, job.status)}</p>
+                                                </div>
+                                                <strong>{job.repo_name.clone()}</strong>
+                                            </header>
+                                            <div class="job-meta">
+                                                <span>{format!("Thread: {}", thread_label)}</span>
+                                                <span>{format!("Updated: {}", job.updated_at.clone())}</span>
+                                            </div>
+                                        </article>
+                                    }
+                                }
+                            />
+                            {move || {
+                                if jobs.get().is_empty() {
+                                    view! {
+                                        <div class="empty">
+                                            <p>"No jobs have been created yet."</p>
+                                        </div>
+                                    }.into_any()
+                                } else {
+                                    ().into_any()
+                                }
+                            }}
+                        </div>
                     </div>
                 </section>
                 <section class="panel content">
@@ -973,9 +1070,11 @@ pub fn App() -> impl IntoView {
                                             let set_new_job_title = set_new_job_title;
                                             let set_new_job_request_text = set_new_job_request_text;
                                             let set_selected_thread = set_selected_thread;
+                                            let set_preferred_job_id = set_preferred_job_id;
                                             let set_selected_job_id = set_selected_job_id;
                                             let set_status_text = set_status_text;
                                             let set_threads = set_threads;
+                                            let set_jobs = set_jobs;
                                             let selected_thread_id = selected_thread_id;
                                             let set_selected_thread_id = set_selected_thread_id;
                                             let thread_id = job_thread_id.clone();
@@ -993,6 +1092,7 @@ pub fn App() -> impl IntoView {
                                                     Ok(job) => {
                                                         set_new_job_title.set(String::new());
                                                         set_new_job_request_text.set(String::new());
+                                                        set_preferred_job_id.set(Some(job.id.clone()));
                                                         set_selected_job_id.set(Some(job.id.clone()));
                                                         set_status_text.set(format!(
                                                             "Job {} is {}.",
@@ -1013,6 +1113,7 @@ pub fn App() -> impl IntoView {
                                                             set_status_text,
                                                         )
                                                         .await;
+                                                        let _ = sync_job_list(set_jobs).await;
                                                     }
                                                     Err(error) => {
                                                         set_status_text.set(format!(
@@ -1124,7 +1225,7 @@ pub fn App() -> impl IntoView {
                                 <div class="empty">
                                     <p class="eyebrow">"No Thread Selected"</p>
                                     <h2>"Create or choose a thread"</h2>
-                                    <p>"Select a thread to view messages, jobs, and runtime execution progress."</p>
+                                    <p>"Select a thread or choose a job from the global jobs list to view runtime execution progress."</p>
                                 </div>
                             }.into_any()
                         }
@@ -1164,6 +1265,11 @@ async fn sync_thread_list(
     Ok(())
 }
 
+async fn sync_job_list(set_jobs: WriteSignal<Vec<JobRecord>>) -> Result<(), String> {
+    set_jobs.set(fetch_jobs().await?);
+    Ok(())
+}
+
 async fn sync_selected_thread(
     thread_id: String,
     set_selected_thread: WriteSignal<Option<ThreadDetail>>,
@@ -1198,6 +1304,16 @@ fn api_base() -> String {
 async fn fetch_threads() -> Result<Vec<ThreadSummary>, String> {
     decode_json(
         Request::get(&format!("{}/threads", api_base()))
+            .send()
+            .await
+            .map_err(|error| error.to_string())?,
+    )
+    .await
+}
+
+async fn fetch_jobs() -> Result<Vec<JobRecord>, String> {
+    decode_json(
+        Request::get(&format!("{}/jobs", api_base()))
             .send()
             .await
             .map_err(|error| error.to_string())?,
