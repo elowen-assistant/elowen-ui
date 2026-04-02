@@ -26,6 +26,7 @@ struct MessageRecord {
     id: String,
     role: String,
     content: String,
+    status: String,
     created_at: String,
 }
 
@@ -543,6 +544,39 @@ pub fn App() -> impl IntoView {
                 .message.user { background: #fcf3e8; }
                 .message.assistant { background: #eef6f3; }
                 .message.system { background: #f5f0fb; }
+                .message.mode-conversation { border-color: #7aa88b; }
+                .message.mode-handoff { border-color: #8b6a42; background: #fbf4e8; }
+                .message.mode-dispatch, .message.mode-job-update { border-color: #6c7ea6; }
+                .message-header {
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    gap: 12px;
+                    flex-wrap: wrap;
+                }
+                .message-header-main {
+                    display: flex;
+                    align-items: center;
+                    gap: 10px;
+                    flex-wrap: wrap;
+                }
+                .mode-badge {
+                    display: inline-flex;
+                    align-items: center;
+                    border-radius: 999px;
+                    padding: 4px 10px;
+                    font-size: 0.72rem;
+                    font-weight: 700;
+                    letter-spacing: 0.04em;
+                    text-transform: uppercase;
+                    background: rgba(64, 55, 42, 0.08);
+                    color: var(--ink);
+                }
+                .mode-badge.conversation { background: #dfeee5; color: #24543c; }
+                .mode-badge.handoff { background: #f1e2c8; color: #6e4a1d; }
+                .mode-badge.dispatch { background: #e3e8f5; color: #334e82; }
+                .mode-badge.job-update { background: #dde7f7; color: #2f4b7f; }
+                .mode-badge.system { background: #efe7fb; color: #5d3e84; }
                 .message-body { white-space: pre-wrap; }
                 .empty {
                     padding: 36px 24px;
@@ -1198,19 +1232,39 @@ pub fn App() -> impl IntoView {
                                             children=move |message| {
                                                 let message_id = message.id.clone();
                                                 let message_role = message.role.clone();
+                                                let message_mode_class = message_mode_class(&message);
+                                                let message_mode_badge = message_mode_badge(&message);
+                                                let can_dispatch = message_role == "user"
+                                                    || (message_role == "assistant"
+                                                        && message.status == "conversation.reply");
                                                 let dispatch_label = if message_role == "assistant" {
                                                     "Dispatch This Plan"
                                                 } else {
                                                     "Dispatch This Request"
                                                 };
                                                 view! {
-                                                    <article class=format!("message {}", message.role)>
-                                                        <header>
-                                                            <strong>{message.role.clone()}</strong>
+                                                    <article class=format!(
+                                                        "message {} {}",
+                                                        message.role, message_mode_class
+                                                    )>
+                                                        <header class="message-header">
+                                                            <div class="message-header-main">
+                                                                <strong>{message.role.clone()}</strong>
+                                                                {message_mode_badge.map(|(badge_class, label)| {
+                                                                    view! {
+                                                                        <span class=format!(
+                                                                            "mode-badge {}",
+                                                                            badge_class
+                                                                        )>
+                                                                            {label}
+                                                                        </span>
+                                                                    }
+                                                                })}
+                                                            </div>
                                                             <span>{message.created_at.clone()}</span>
                                                         </header>
                                                         <p class="message-body">{message.content.clone()}</p>
-                                                        {if message_role == "user" || message_role == "assistant" {
+                                                        {if can_dispatch {
                                                             view! {
                                                                 <div class="thread-meta">
                                                                     <span>"Explicit handoff"</span>
@@ -1767,6 +1821,36 @@ fn report_array_strings(report: &Value, key: &str) -> Vec<String> {
                 .collect::<Vec<_>>()
         })
         .unwrap_or_default()
+}
+
+fn message_mode_class(message: &MessageRecord) -> &'static str {
+    if message.status == "conversation.reply" {
+        "mode-conversation"
+    } else if message.status == "workflow.handoff.created" {
+        "mode-handoff"
+    } else if message.status == "workflow.dispatch.created" {
+        "mode-dispatch"
+    } else if message.status.starts_with("job_event:") {
+        "mode-job-update"
+    } else {
+        ""
+    }
+}
+
+fn message_mode_badge(message: &MessageRecord) -> Option<(&'static str, &'static str)> {
+    if message.status == "conversation.reply" {
+        Some(("conversation", "Conversation"))
+    } else if message.status == "workflow.handoff.created" {
+        Some(("handoff", "Workflow Handoff"))
+    } else if message.status == "workflow.dispatch.created" {
+        Some(("dispatch", "Direct Dispatch"))
+    } else if message.status.starts_with("job_event:") {
+        Some(("job-update", "Job Update"))
+    } else if message.role == "system" {
+        Some(("system", "System"))
+    } else {
+        None
+    }
 }
 
 fn format_string_list(values: &[String]) -> String {
