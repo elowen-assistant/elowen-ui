@@ -140,6 +140,14 @@ struct CreateThreadChatRequest {
 }
 
 #[derive(Debug, Serialize)]
+struct DispatchThreadMessageRequest {
+    source_message_id: String,
+    title: String,
+    repo_name: String,
+    base_branch: String,
+}
+
+#[derive(Debug, Serialize)]
 struct CreateJobRequest {
     title: String,
     repo_name: String,
@@ -165,6 +173,13 @@ struct ChatDispatchResponse {
 struct ChatReplyResponse {
     user_message: MessageRecord,
     assistant_message: MessageRecord,
+}
+
+#[derive(Debug, Deserialize)]
+struct MessageDispatchResponse {
+    source_message: MessageRecord,
+    acknowledgement: MessageRecord,
+    job: JobRecord,
 }
 
 #[derive(Debug, Serialize)]
@@ -683,7 +698,9 @@ pub fn App() -> impl IntoView {
                         if let Some(thread) = selected_thread.get() {
                             let thread_id = thread.thread.id.clone();
                             let job_thread_id = thread_id.clone();
-                            let message_thread_id = thread_id.clone();
+                            let message_actions_thread_id = thread_id.clone();
+                            let chat_submit_thread_id = thread_id.clone();
+                            let draft_dispatch_thread_id = thread_id.clone();
                             let thread_record = thread.thread.clone();
                             let jobs = thread.jobs.clone();
                             let messages = thread.messages.clone();
@@ -1179,6 +1196,13 @@ pub fn App() -> impl IntoView {
                                             each=move || messages.clone()
                                             key=|message| message.id.clone()
                                             children=move |message| {
+                                                let message_id = message.id.clone();
+                                                let message_role = message.role.clone();
+                                                let dispatch_label = if message_role == "assistant" {
+                                                    "Dispatch This Plan"
+                                                } else {
+                                                    "Dispatch This Request"
+                                                };
                                                 view! {
                                                     <article class=format!("message {}", message.role)>
                                                         <header>
@@ -1186,6 +1210,81 @@ pub fn App() -> impl IntoView {
                                                             <span>{message.created_at.clone()}</span>
                                                         </header>
                                                         <p class="message-body">{message.content.clone()}</p>
+                                                        {if message_role == "user" || message_role == "assistant" {
+                                                            view! {
+                                                                <div class="thread-meta">
+                                                                    <span>"Explicit handoff"</span>
+                                                                    <button
+                                                                        type="button"
+                                                                        on:click={
+                                                                            let message_thread_id = message_actions_thread_id.clone();
+                                                                            let source_message_id = message_id.clone();
+                                                                            let source_role = message_role.clone();
+                                                                            move |_| {
+                                                                                let repo_name = new_job_repo.get_untracked().trim().to_string();
+                                                                                let title = new_job_title.get_untracked().trim().to_string();
+                                                                                let base_branch = new_job_base_branch.get_untracked().trim().to_string();
+                                                                                if repo_name.is_empty() {
+                                                                                    set_status_text.set("Repository is required for laptop dispatch.".to_string());
+                                                                                    return;
+                                                                                }
+
+                                                                                spawn_local({
+                                                                                    let set_selected_thread = set_selected_thread;
+                                                                                    let set_preferred_job_id = set_preferred_job_id;
+                                                                                    let set_selected_job_id = set_selected_job_id;
+                                                                                    let set_status_text = set_status_text;
+                                                                                    let set_threads = set_threads;
+                                                                                    let set_jobs = set_jobs;
+                                                                                    let selected_thread_id = selected_thread_id;
+                                                                                    let set_selected_thread_id = set_selected_thread_id;
+                                                                                    let thread_id = message_thread_id.clone();
+                                                                                    let source_message_id = source_message_id.clone();
+                                                                                    let source_role = source_role.clone();
+
+                                                                                    async move {
+                                                                                        match dispatch_thread_message(&thread_id, &source_message_id, &title, &repo_name, &base_branch).await {
+                                                                                            Ok(job) => {
+                                                                                                set_preferred_job_id.set(Some(job.id.clone()));
+                                                                                                set_selected_job_id.set(Some(job.id.clone()));
+                                                                                                set_status_text.set(format!(
+                                                                                                    "Escalated {} message into job {}.",
+                                                                                                    source_role,
+                                                                                                    job.short_id
+                                                                                                ));
+                                                                                                let _ = sync_selected_thread(
+                                                                                                    thread_id.clone(),
+                                                                                                    set_selected_thread,
+                                                                                                    set_status_text,
+                                                                                                )
+                                                                                                .await;
+                                                                                                let _ = sync_thread_list(
+                                                                                                    set_threads,
+                                                                                                    selected_thread_id,
+                                                                                                    set_selected_thread_id,
+                                                                                                    set_status_text,
+                                                                                                )
+                                                                                                .await;
+                                                                                                let _ = sync_job_list(set_jobs).await;
+                                                                                            }
+                                                                                            Err(error) => {
+                                                                                                set_status_text.set(format!(
+                                                                                                    "Failed to dispatch selected message: {error}"
+                                                                                                ));
+                                                                                            }
+                                                                                        }
+                                                                                    }
+                                                                                });
+                                                                            }
+                                                                        }
+                                                                    >
+                                                                        {dispatch_label}
+                                                                    </button>
+                                                                </div>
+                                                            }.into_any()
+                                                        } else {
+                                                            ().into_any()
+                                                        }}
                                                     </article>
                                                 }
                                             }
@@ -1206,7 +1305,7 @@ pub fn App() -> impl IntoView {
                                             let set_threads = set_threads;
                                             let selected_thread_id = selected_thread_id;
                                             let set_selected_thread_id = set_selected_thread_id;
-                                            let thread_id = message_thread_id.clone();
+                                            let thread_id = chat_submit_thread_id.clone();
 
                                             async move {
                                                 match send_thread_chat_message(&thread_id, &content).await {
@@ -1274,7 +1373,7 @@ pub fn App() -> impl IntoView {
                                             <button
                                                 type="button"
                                                 on:click={
-                                                    let message_thread_id = message_thread_id.clone();
+                                                    let message_thread_id = draft_dispatch_thread_id.clone();
                                                     move |_| {
                                                     let content = new_message_content.get_untracked().trim().to_string();
                                                     let repo_name = new_job_repo.get_untracked().trim().to_string();
@@ -1338,7 +1437,7 @@ pub fn App() -> impl IntoView {
                                                 }
                                                 }
                                             >
-                                                "Dispatch To Laptop"
+                                                "Dispatch Draft To Laptop"
                                             </button>
                                         </div>
                                     </form>
@@ -1521,6 +1620,35 @@ async fn dispatch_chat_message(
     .await?;
 
     let _ = (&response.message, &response.acknowledgement);
+    Ok(response.job)
+}
+
+async fn dispatch_thread_message(
+    thread_id: &str,
+    source_message_id: &str,
+    title: &str,
+    repo_name: &str,
+    base_branch: &str,
+) -> Result<JobRecord, String> {
+    let response: MessageDispatchResponse = decode_json(
+        Request::post(&format!(
+            "{}/threads/{thread_id}/message-dispatch",
+            api_base()
+        ))
+        .json(&DispatchThreadMessageRequest {
+            source_message_id: source_message_id.to_string(),
+            title: title.to_string(),
+            repo_name: repo_name.to_string(),
+            base_branch: base_branch.to_string(),
+        })
+        .map_err(|error| error.to_string())?
+        .send()
+        .await
+        .map_err(|error| error.to_string())?,
+    )
+    .await?;
+
+    let _ = (&response.source_message, &response.acknowledgement);
     Ok(response.job)
 }
 
