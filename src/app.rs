@@ -523,6 +523,7 @@ pub fn App() -> impl IntoView {
                 .message.user { background: #fcf3e8; }
                 .message.assistant { background: #eef6f3; }
                 .message.system { background: #f5f0fb; }
+                .message-body { white-space: pre-wrap; }
                 .empty {
                     padding: 36px 24px;
                     border: 1px dashed var(--line);
@@ -1179,7 +1180,7 @@ pub fn App() -> impl IntoView {
                                                             <strong>{message.role.clone()}</strong>
                                                             <span>{message.created_at.clone()}</span>
                                                         </header>
-                                                        <p>{message.content.clone()}</p>
+                                                        <p class="message-body">{message.content.clone()}</p>
                                                     </article>
                                                 }
                                             }
