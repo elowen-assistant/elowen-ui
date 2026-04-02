@@ -1293,12 +1293,14 @@ async fn sync_selected_job(
 }
 
 fn api_base() -> String {
-    let host = web_sys::window()
-        .and_then(|window| window.location().hostname().ok())
-        .filter(|value| !value.is_empty())
-        .unwrap_or_else(|| "localhost".to_string());
+    if let Some(origin) = web_sys::window()
+        .and_then(|window| window.location().origin().ok())
+        .filter(|value| !value.is_empty() && value != "null")
+    {
+        return format!("{origin}/api/v1");
+    }
 
-    format!("http://{host}:8080/api/v1")
+    "http://localhost:8080/api/v1".to_string()
 }
 
 async fn fetch_threads() -> Result<Vec<ThreadSummary>, String> {
