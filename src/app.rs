@@ -133,6 +133,14 @@ struct CreateMessageRequest {
 }
 
 #[derive(Debug, Serialize)]
+struct CreateChatDispatchRequest {
+    content: String,
+    title: String,
+    repo_name: String,
+    base_branch: String,
+}
+
+#[derive(Debug, Serialize)]
 struct CreateJobRequest {
     title: String,
     repo_name: String,
@@ -145,6 +153,13 @@ struct ResolveApprovalRequest {
     status: String,
     resolved_by: String,
     reason: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct ChatDispatchResponse {
+    message: MessageRecord,
+    acknowledgement: MessageRecord,
+    job: JobRecord,
 }
 
 #[derive(Debug, Serialize)]
@@ -1054,7 +1069,9 @@ pub fn App() -> impl IntoView {
                                         }
                                     }}
 
-                                    <form on:submit=move |ev: ev::SubmitEvent| {
+                                    <details>
+                                        <summary>"Advanced Manual Job"</summary>
+                                        <form on:submit=move |ev: ev::SubmitEvent| {
                                         ev.prevent_default();
                                         let title = new_job_title.get_untracked().trim().to_string();
                                         let repo_name = new_job_repo.get_untracked().trim().to_string();
@@ -1148,7 +1165,8 @@ pub fn App() -> impl IntoView {
                                             on:input=move |ev| set_new_job_request_text.set(event_target_value(&ev))
                                         />
                                         <button type="submit">"Create Job"</button>
-                                    </form>
+                                        </form>
+                                    </details>
 
                                     <div class="message-list">
                                         <For
@@ -1170,25 +1188,38 @@ pub fn App() -> impl IntoView {
                                     <form on:submit=move |ev: ev::SubmitEvent| {
                                         ev.prevent_default();
                                         let content = new_message_content.get_untracked().trim().to_string();
-                                        if content.is_empty() {
-                                            set_status_text.set("Message content is required.".to_string());
+                                        let repo_name = new_job_repo.get_untracked().trim().to_string();
+                                        let title = new_job_title.get_untracked().trim().to_string();
+                                        let base_branch = new_job_base_branch.get_untracked().trim().to_string();
+                                        if content.is_empty() || repo_name.is_empty() {
+                                            set_status_text.set("Message content and repo are required to dispatch from chat.".to_string());
                                             return;
                                         }
 
                                         spawn_local({
                                             let set_new_message_content = set_new_message_content;
+                                            let set_new_job_title = set_new_job_title;
                                             let set_selected_thread = set_selected_thread;
+                                            let set_preferred_job_id = set_preferred_job_id;
+                                            let set_selected_job_id = set_selected_job_id;
                                             let set_status_text = set_status_text;
                                             let set_threads = set_threads;
+                                            let set_jobs = set_jobs;
                                             let selected_thread_id = selected_thread_id;
                                             let set_selected_thread_id = set_selected_thread_id;
                                             let thread_id = message_thread_id.clone();
 
                                             async move {
-                                                match create_message(&thread_id, &content).await {
-                                                    Ok(_) => {
+                                                match dispatch_chat_message(&thread_id, &content, &title, &repo_name, &base_branch).await {
+                                                    Ok(job) => {
                                                         set_new_message_content.set(String::new());
-                                                        set_status_text.set("Message posted.".to_string());
+                                                        set_new_job_title.set(String::new());
+                                                        set_preferred_job_id.set(Some(job.id.clone()));
+                                                        set_selected_job_id.set(Some(job.id.clone()));
+                                                        set_status_text.set(format!(
+                                                            "Dispatched job {} from chat.",
+                                                            job.short_id
+                                                        ));
                                                         let _ = sync_selected_thread(
                                                             thread_id.clone(),
                                                             set_selected_thread,
@@ -1202,21 +1233,97 @@ pub fn App() -> impl IntoView {
                                                             set_status_text,
                                                         )
                                                         .await;
+                                                        let _ = sync_job_list(set_jobs).await;
                                                     }
                                                     Err(error) => {
                                                         set_status_text
-                                                            .set(format!("Failed to post message: {error}"));
+                                                            .set(format!("Failed to dispatch from chat: {error}"));
                                                     }
                                                 }
                                             }
                                         });
                                     }>
+                                        <div class="thread-meta">
+                                            <span>"Chat Dispatch Routing"</span>
+                                            <span>{format!("Primary device fallback is automatic when repo `{}` is allowed.", new_job_repo.get())}</span>
+                                        </div>
+                                        <input
+                                            type="text"
+                                            placeholder="Repository"
+                                            prop:value=move || new_job_repo.get()
+                                            on:input=move |ev| set_new_job_repo.set(event_target_value(&ev))
+                                        />
+                                        <input
+                                            type="text"
+                                            placeholder="Optional job title"
+                                            prop:value=move || new_job_title.get()
+                                            on:input=move |ev| set_new_job_title.set(event_target_value(&ev))
+                                        />
+                                        <input
+                                            type="text"
+                                            placeholder="Base branch"
+                                            prop:value=move || new_job_base_branch.get()
+                                            on:input=move |ev| set_new_job_base_branch.set(event_target_value(&ev))
+                                        />
                                         <textarea
-                                            placeholder="Post a message to this thread"
+                                            placeholder="Ask Elowen to do work on your laptop"
                                             prop:value=move || new_message_content.get()
                                             on:input=move |ev| set_new_message_content.set(event_target_value(&ev))
                                         />
-                                        <button type="submit">"Post Message"</button>
+                                        <div class="thread-meta">
+                                            <button type="submit">"Send To Laptop"</button>
+                                            <button
+                                                type="button"
+                                                on:click={
+                                                    let message_thread_id = message_thread_id.clone();
+                                                    move |_| {
+                                                    let content = new_message_content.get_untracked().trim().to_string();
+                                                    if content.is_empty() {
+                                                        set_status_text.set("Message content is required.".to_string());
+                                                        return;
+                                                    }
+
+                                                    spawn_local({
+                                                        let set_new_message_content = set_new_message_content;
+                                                        let set_selected_thread = set_selected_thread;
+                                                        let set_status_text = set_status_text;
+                                                        let set_threads = set_threads;
+                                                        let selected_thread_id = selected_thread_id;
+                                                        let set_selected_thread_id = set_selected_thread_id;
+                                                        let thread_id = message_thread_id.clone();
+
+                                                        async move {
+                                                            match create_message(&thread_id, &content).await {
+                                                                Ok(_) => {
+                                                                    set_new_message_content.set(String::new());
+                                                                    set_status_text.set("Message posted without dispatch.".to_string());
+                                                                    let _ = sync_selected_thread(
+                                                                        thread_id.clone(),
+                                                                        set_selected_thread,
+                                                                        set_status_text,
+                                                                    )
+                                                                    .await;
+                                                                    let _ = sync_thread_list(
+                                                                        set_threads,
+                                                                        selected_thread_id,
+                                                                        set_selected_thread_id,
+                                                                        set_status_text,
+                                                                    )
+                                                                    .await;
+                                                                }
+                                                                Err(error) => {
+                                                                    set_status_text
+                                                                        .set(format!("Failed to post message: {error}"));
+                                                                }
+                                                            }
+                                                        }
+                                                    });
+                                                }
+                                                }
+                                            >
+                                                "Post Only"
+                                            </button>
+                                        </div>
                                     </form>
                                 </div>
                             }.into_any()
@@ -1370,6 +1477,32 @@ async fn create_message(thread_id: &str, content: &str) -> Result<MessageRecord,
             .map_err(|error| error.to_string())?,
     )
     .await
+}
+
+async fn dispatch_chat_message(
+    thread_id: &str,
+    content: &str,
+    title: &str,
+    repo_name: &str,
+    base_branch: &str,
+) -> Result<JobRecord, String> {
+    let response: ChatDispatchResponse = decode_json(
+        Request::post(&format!("{}/threads/{thread_id}/chat-dispatch", api_base()))
+            .json(&CreateChatDispatchRequest {
+                content: content.to_string(),
+                title: title.to_string(),
+                repo_name: repo_name.to_string(),
+                base_branch: base_branch.to_string(),
+            })
+            .map_err(|error| error.to_string())?
+            .send()
+            .await
+            .map_err(|error| error.to_string())?,
+    )
+    .await?;
+
+    let _ = (&response.message, &response.acknowledgement);
+    Ok(response.job)
 }
 
 async fn create_job(
