@@ -379,6 +379,80 @@ pub fn App() -> impl IntoView {
                 .message.mode-draft-ready { box-shadow: inset 0 0 0 1px rgba(31, 90, 77, 0.12); }
                 .message.mode-handoff { border-color: #8b6a42; background: #fbf4e8; }
                 .message.mode-dispatch, .message.mode-job-update { border-color: #6c7ea6; }
+                .thread-focus {
+                    display: grid;
+                    gap: 18px;
+                }
+                .thread-hero {
+                    display: grid;
+                    gap: 14px;
+                    padding: 18px 20px;
+                    border: 1px solid var(--line);
+                    border-radius: 22px;
+                    background:
+                        linear-gradient(145deg, rgba(31, 90, 77, 0.09), rgba(255, 255, 255, 0.82)),
+                        rgba(255, 255, 255, 0.9);
+                }
+                .thread-hero-header {
+                    display: flex;
+                    align-items: flex-start;
+                    justify-content: space-between;
+                    gap: 14px;
+                    flex-wrap: wrap;
+                }
+                .thread-hero h2 {
+                    margin-bottom: 4px;
+                    font-size: 2rem;
+                }
+                .thread-summary-row {
+                    display: flex;
+                    flex-wrap: wrap;
+                    gap: 10px;
+                }
+                .thread-pill {
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 8px;
+                    border-radius: 999px;
+                    padding: 8px 12px;
+                    background: rgba(255, 255, 255, 0.86);
+                    color: var(--muted);
+                    font-size: 0.82rem;
+                    border: 1px solid rgba(31, 90, 77, 0.08);
+                }
+                .thread-primary {
+                    display: grid;
+                    gap: 16px;
+                }
+                .context-shell {
+                    display: grid;
+                    gap: 12px;
+                }
+                .context-panel {
+                    border: 1px solid var(--line);
+                    border-radius: 18px;
+                    background: rgba(255, 255, 255, 0.76);
+                    overflow: hidden;
+                }
+                .context-panel summary {
+                    cursor: pointer;
+                    list-style: none;
+                    padding: 14px 16px;
+                    font-weight: 700;
+                    color: var(--ink);
+                    background: rgba(244, 240, 232, 0.76);
+                }
+                .context-panel summary::-webkit-details-marker {
+                    display: none;
+                }
+                .context-panel[open] summary {
+                    border-bottom: 1px solid var(--line);
+                }
+                .context-panel-body {
+                    padding: 14px 16px 16px 16px;
+                    display: grid;
+                    gap: 12px;
+                }
                 .message-header {
                     display: flex;
                     align-items: center;
@@ -448,6 +522,9 @@ pub fn App() -> impl IntoView {
                     background: rgba(255, 255, 255, 0.86);
                     display: grid;
                     gap: 12px;
+                    position: sticky;
+                    bottom: 18px;
+                    box-shadow: 0 14px 30px rgba(40, 34, 28, 0.08);
                 }
                 .composer-header {
                     display: flex;
@@ -553,6 +630,7 @@ pub fn App() -> impl IntoView {
                 }
                 @media (max-width: 920px) {
                     .frame { grid-template-columns: 1fr; }
+                    .thread-hero h2 { font-size: 1.6rem; }
                 }
                 "#}
             </style>
@@ -716,11 +794,33 @@ pub fn App() -> impl IntoView {
                             let active_job_id = selected_job_id.get();
 
                             view! {
-                                <div>
-                                    <p class="eyebrow">"Thread Detail"</p>
-                                    <h2>{thread_record.title.clone()}</h2>
-                                    <p class="status">{format!("Status: {} | Updated: {}", thread_record.status, thread_record.updated_at)}</p>
+                                <div class="thread-focus">
+                                    <section class="thread-hero">
+                                        <div class="thread-hero-header">
+                                            <div>
+                                                <p class="eyebrow">"Conversation"</p>
+                                                <h2>{thread_record.title.clone()}</h2>
+                                                <p class="status">"Chat is primary. Jobs, notes, and approvals live in the context panels below."</p>
+                                            </div>
+                                            <span class=format!(
+                                                "status-badge {}",
+                                                status_badge_class(&thread_record.status)
+                                            )>
+                                                {thread_record.status.clone()}
+                                            </span>
+                                        </div>
+                                        <div class="thread-summary-row">
+                                            <span class="thread-pill">{format!("{} messages", messages.len())}</span>
+                                            <span class="thread-pill">{format!("{} jobs", jobs.len())}</span>
+                                            <span class="thread-pill">{format!("{} notes", thread_notes.len())}</span>
+                                            <span class="thread-pill">{format!("Updated {}", thread_record.updated_at)}</span>
+                                        </div>
+                                    </section>
 
+                                    <div class="context-shell">
+                                    <details class="context-panel">
+                                        <summary>"Thread Context"</summary>
+                                        <div class="context-panel-body">
                                     <div class="note-list">
                                         <p class="eyebrow">"Related Notes"</p>
                                         {if thread_notes.is_empty() {
@@ -804,6 +904,8 @@ pub fn App() -> impl IntoView {
                                             }.into_any()
                                         }}
                                     </div>
+                                        </div>
+                                    </details>
 
                                     {move || {
                                         if let Some(job_detail) = selected_job_detail.get() {
@@ -819,6 +921,9 @@ pub fn App() -> impl IntoView {
                                             let summary = job_detail.summary.clone();
                                             let approval_thread_id = thread_id.clone();
                                             view! {
+                                                <details class="context-panel" open>
+                                                    <summary>"Selected Job"</summary>
+                                                    <div class="context-panel-body">
                                                 <section class="job-detail">
                                                     <p class="eyebrow">"Job Detail"</p>
                                                     <h3>{job_detail.job.title.clone()}</h3>
@@ -1162,19 +1267,27 @@ pub fn App() -> impl IntoView {
                                                         />
                                                     </div>
                                                 </section>
+                                                    </div>
+                                                </details>
                                             }.into_any()
                                         } else {
                                             view! {
-                                                <div class="empty">
-                                                    <p class="eyebrow">"No Job Selected"</p>
-                                                    <p>"Choose a job to inspect the live execution detail and event history."</p>
-                                                </div>
+                                                <details class="context-panel">
+                                                    <summary>"Selected Job"</summary>
+                                                    <div class="context-panel-body">
+                                                        <div class="empty">
+                                                            <p class="eyebrow">"No Job Selected"</p>
+                                                            <p>"Choose a job to inspect the live execution detail and event history."</p>
+                                                        </div>
+                                                    </div>
+                                                </details>
                                             }.into_any()
                                         }
                                     }}
 
-                                    <details>
+                                    <details class="context-panel">
                                         <summary>"Advanced Manual Job"</summary>
+                                        <div class="context-panel-body">
                                         <form on:submit=move |ev: ev::SubmitEvent| {
                                         ev.prevent_default();
                                         let title = new_job_title.get_untracked().trim().to_string();
@@ -1271,8 +1384,12 @@ pub fn App() -> impl IntoView {
                                         />
                                         <button type="submit">"Create Job"</button>
                                         </form>
+                                        </div>
                                     </details>
 
+                                    </div>
+
+                                    <div class="thread-primary">
                                     <div class="message-list">
                                         <For
                                             each=move || messages.clone()
@@ -1725,6 +1842,7 @@ pub fn App() -> impl IntoView {
                                             </button>
                                         </div>
                                     </form>
+                                    </div>
                                 </div>
                             }.into_any()
                         } else {
