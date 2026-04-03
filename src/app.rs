@@ -410,6 +410,36 @@ pub fn App() -> impl IntoView {
                 .mode-badge.job-update { background: #dde7f7; color: #2f4b7f; }
                 .mode-badge.system { background: #efe7fb; color: #5d3e84; }
                 .message-body { white-space: pre-wrap; }
+                .message-details {
+                    margin-top: 12px;
+                    border: 1px solid #d8dfeb;
+                    border-radius: 14px;
+                    background: rgba(255, 255, 255, 0.72);
+                    overflow: hidden;
+                }
+                .message-details summary {
+                    cursor: pointer;
+                    list-style: none;
+                    padding: 10px 14px;
+                    font-size: 0.78rem;
+                    font-weight: 700;
+                    letter-spacing: 0.04em;
+                    text-transform: uppercase;
+                    color: var(--muted);
+                    background: rgba(221, 231, 247, 0.4);
+                }
+                .message-details summary::-webkit-details-marker {
+                    display: none;
+                }
+                .message-details[open] summary {
+                    border-bottom: 1px solid var(--line);
+                }
+                .message-details pre {
+                    padding: 14px;
+                    background: transparent;
+                    font-size: 0.84rem;
+                    color: #3f4c65;
+                }
                 .thread-composer {
                     margin-top: 18px;
                     padding: 16px;
