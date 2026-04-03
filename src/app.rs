@@ -428,6 +428,39 @@ pub fn App() -> impl IntoView {
                 h1, h2, h3, p { margin-top: 0; }
                 h1 { font-size: 2.3rem; margin-bottom: 6px; }
                 .status { color: var(--muted); font-size: 0.95rem; margin-bottom: 18px; }
+                .status-row {
+                    display: flex;
+                    align-items: center;
+                    gap: 8px;
+                    flex-wrap: wrap;
+                    margin-bottom: 12px;
+                }
+                .status-badge {
+                    display: inline-flex;
+                    align-items: center;
+                    border-radius: 999px;
+                    padding: 4px 10px;
+                    font-size: 0.74rem;
+                    font-weight: 700;
+                    letter-spacing: 0.04em;
+                    text-transform: uppercase;
+                    background: rgba(64, 55, 42, 0.08);
+                    color: var(--ink);
+                }
+                .status-badge.pending { background: #ece7df; color: #54483a; }
+                .status-badge.dispatched, .status-badge.accepted, .status-badge.running, .status-badge.pushing {
+                    background: #e1ebf7;
+                    color: #264d7a;
+                }
+                .status-badge.awaiting_approval { background: #f4ead0; color: #72501f; }
+                .status-badge.completed, .status-badge.approved, .status-badge.success {
+                    background: #dfeee5;
+                    color: #24543c;
+                }
+                .status-badge.failed, .status-badge.rejected, .status-badge.failure {
+                    background: #f4ddd8;
+                    color: #7a2f25;
+                }
                 form { display: grid; gap: 10px; }
                 input, textarea, button { font: inherit; }
                 input, textarea {
@@ -494,6 +527,23 @@ pub fn App() -> impl IntoView {
                 }
                 .job-meta { flex-wrap: wrap; justify-content: flex-start; gap: 10px 16px; }
                 .job-detail { background: rgba(255, 255, 255, 0.8); margin: 0 0 24px 0; }
+                .job-overview {
+                    display: grid;
+                    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+                    gap: 12px;
+                    margin: 16px 0;
+                }
+                .job-overview article {
+                    border: 1px solid var(--line);
+                    border-radius: 16px;
+                    padding: 14px;
+                    background: rgba(255, 255, 255, 0.84);
+                }
+                .job-overview strong {
+                    display: block;
+                    font-size: 1rem;
+                    margin-bottom: 4px;
+                }
                 pre {
                     margin: 0;
                     max-width: 100%;
@@ -522,6 +572,11 @@ pub fn App() -> impl IntoView {
                     line-height: 1.5;
                 }
                 .approval-card.pending { border-color: var(--accent); background: #f4fbf8; }
+                .approval-note {
+                    color: var(--muted);
+                    font-size: 0.9rem;
+                    margin-bottom: 0;
+                }
                 .approval-actions {
                     display: flex;
                     flex-wrap: wrap;
@@ -701,7 +756,15 @@ pub fn App() -> impl IntoView {
                                             <header>
                                                 <div>
                                                     <h3>{job.title.clone()}</h3>
-                                                    <p class="status">{format!("{} - {}", job.short_id, job.status)}</p>
+                                                    <div class="status-row">
+                                                        <span class=format!(
+                                                            "status-badge {}",
+                                                            status_badge_class(&job.status)
+                                                        )>
+                                                            {job.status.clone()}
+                                                        </span>
+                                                        <span class="status">{job.short_id.clone()}</span>
+                                                    </div>
                                                 </div>
                                                 <strong>{job.repo_name.clone()}</strong>
                                             </header>
@@ -798,7 +861,15 @@ pub fn App() -> impl IntoView {
                                                         <header>
                                                             <div>
                                                                 <h3>{job.title.clone()}</h3>
-                                                                <p class="status">{format!("{} - {}", job.short_id, job.status)}</p>
+                                                                <div class="status-row">
+                                                                    <span class=format!(
+                                                                        "status-badge {}",
+                                                                        status_badge_class(&job.status)
+                                                                    )>
+                                                                        {job.status.clone()}
+                                                                    </span>
+                                                                    <span class="status">{job.short_id.clone()}</span>
+                                                                </div>
                                                             </div>
                                                             <strong>{job.repo_name.clone()}</strong>
                                                         </header>
@@ -835,26 +906,48 @@ pub fn App() -> impl IntoView {
                                             let approvals = job_detail.approvals.clone();
                                             let related_notes = job_detail.related_notes.clone();
                                             let summary = job_detail.summary.clone();
+                                            let approval_thread_id = thread_id.clone();
                                             view! {
                                                 <section class="job-detail">
-                                                    <p class="eyebrow">"Selected Job"</p>
+                                                    <p class="eyebrow">"Job Detail"</p>
                                                     <h3>{job_detail.job.title.clone()}</h3>
-                                                    <p class="status">
-                                                        {format!(
-                                                            "{} | {} | {}",
-                                                            job_detail.job.short_id,
-                                                            job_detail.job.status,
-                                                            job_detail.job.device_id.clone().unwrap_or_else(|| "unassigned".to_string())
-                                                        )}
-                                                    </p>
+                                                    <div class="status-row">
+                                                        <span class=format!(
+                                                            "status-badge {}",
+                                                            status_badge_class(&job_detail.job.status)
+                                                        )>
+                                                            {job_detail.job.status.clone()}
+                                                        </span>
+                                                        <span class="status">{format!("Job {}", job_detail.job.short_id)}</span>
+                                                        {job_detail.job.result.clone().map(|result| {
+                                                            let result_class = status_badge_class(&result);
+                                                            view! {
+                                                                <span class=format!("status-badge {}", result_class)>
+                                                                    {result}
+                                                                </span>
+                                                            }
+                                                        })}
+                                                    </div>
                                                     <div class="job-meta">
                                                         <span>{format!("Correlation: {}", job_detail.job.correlation_id.clone())}</span>
-                                                        <span>{format!("Repo: {}", job_detail.job.repo_name.clone())}</span>
-                                                        <span>{format!("Branch: {}", job_detail.job.branch_name.clone().unwrap_or_else(|| "pending".to_string()))}</span>
-                                                        <span>{format!("Base: {}", job_detail.job.base_branch.clone().unwrap_or_else(|| "main".to_string()))}</span>
-                                                        <span>{format!("Result: {}", job_detail.job.result.clone().unwrap_or_else(|| "pending".to_string()))}</span>
-                                                        <span>{format!("Failure Class: {}", job_detail.job.failure_class.clone().unwrap_or_else(|| "none".to_string()))}</span>
                                                         <span>{format!("Updated: {}", job_detail.job.updated_at.clone())}</span>
+                                                    </div>
+                                                    <div class="job-overview">
+                                                        <article>
+                                                            <p class="eyebrow">"Repository"</p>
+                                                            <strong>{job_detail.job.repo_name.clone()}</strong>
+                                                            <span>{format!("Base {}", job_detail.job.base_branch.clone().unwrap_or_else(|| "main".to_string()))}</span>
+                                                        </article>
+                                                        <article>
+                                                            <p class="eyebrow">"Branch"</p>
+                                                            <strong>{job_detail.job.branch_name.clone().unwrap_or_else(|| "pending".to_string())}</strong>
+                                                            <span>{format!("Device {}", job_detail.job.device_id.clone().unwrap_or_else(|| "unassigned".to_string()))}</span>
+                                                        </article>
+                                                        <article>
+                                                            <p class="eyebrow">"Outcome"</p>
+                                                            <strong>{job_detail.job.result.clone().unwrap_or_else(|| "pending".to_string())}</strong>
+                                                            <span>{format!("Failure class {}", job_detail.job.failure_class.clone().unwrap_or_else(|| "none".to_string()))}</span>
+                                                        </article>
                                                     </div>
 
                                                     <div class="report-grid">
@@ -995,8 +1088,10 @@ pub fn App() -> impl IntoView {
                                                                     children=move |approval| {
                                                                         let approve_id = approval.id.clone();
                                                                         let approve_job_id = approval.job_id.clone();
+                                                                        let approve_thread_id = approval_thread_id.clone();
                                                                         let reject_id = approval.id.clone();
                                                                         let reject_job_id = approval.job_id.clone();
+                                                                        let reject_thread_id = approval_thread_id.clone();
                                                                         let is_pending = approval.status == "pending";
                                                                         let summary_text = approval.summary.clone();
                                                                         let resolved_meta = if let Some(resolved_at) = approval.resolved_at.clone() {
@@ -1008,14 +1103,21 @@ pub fn App() -> impl IntoView {
                                                                         } else {
                                                                             "Awaiting resolution".to_string()
                                                                         };
+                                                                        let approval_note = approval_status_note(&approval.status, &job_detail.job.status);
 
                                                                         view! {
                                                                             <article class=("approval-card", true) class:pending=is_pending>
                                                                                 <header>
                                                                                     <strong>{format!("{} approval", approval.action_type)}</strong>
-                                                                                    <span>{approval.status.clone()}</span>
+                                                                                    <span class=format!(
+                                                                                        "status-badge {}",
+                                                                                        status_badge_class(&approval.status)
+                                                                                    )>
+                                                                                        {approval.status.clone()}
+                                                                                    </span>
                                                                                 </header>
                                                                                 <p>{summary_text}</p>
+                                                                                <p class="approval-note">{approval_note}</p>
                                                                                 <p class="status">{resolved_meta}</p>
                                                                                 <p class="status">
                                                                                     {approval.resolution_reason.clone().unwrap_or_else(|| "No resolution note.".to_string())}
@@ -1029,15 +1131,23 @@ pub fn App() -> impl IntoView {
                                                                                                     spawn_local({
                                                                                                         let approval_id = approve_id.clone();
                                                                                                         let approval_job_id = approve_job_id.clone();
+                                                                                                        let thread_id = approve_thread_id.clone();
                                                                                                         let set_selected_job_detail = set_selected_job_detail;
+                                                                                                        let set_selected_thread = set_selected_thread;
                                                                                                         let set_status_text = set_status_text;
                                                                                                         async move {
                                                                                                             match resolve_approval(&approval_id, "approved", "user", "Push approved from UI").await {
                                                                                                                 Ok(_) => {
-                                                                                                                    set_status_text.set("Approval recorded.".to_string());
+                                                                                                                    set_status_text.set("Push approval sent to the laptop. Waiting for the push result.".to_string());
                                                                                                                     let _ = sync_selected_job(
                                                                                                                         approval_job_id,
                                                                                                                         set_selected_job_detail,
+                                                                                                                        set_status_text,
+                                                                                                                    )
+                                                                                                                    .await;
+                                                                                                                    let _ = sync_selected_thread(
+                                                                                                                        thread_id,
+                                                                                                                        set_selected_thread,
                                                                                                                         set_status_text,
                                                                                                                     )
                                                                                                                     .await;
@@ -1050,7 +1160,7 @@ pub fn App() -> impl IntoView {
                                                                                                     });
                                                                                                 }
                                                                                             >
-                                                                                                "Approve Push"
+                                                                                                "Approve And Push"
                                                                                             </button>
                                                                                             <button
                                                                                                 type="button"
@@ -1059,15 +1169,23 @@ pub fn App() -> impl IntoView {
                                                                                                     spawn_local({
                                                                                                         let approval_id = reject_id.clone();
                                                                                                         let approval_job_id = reject_job_id.clone();
+                                                                                                        let thread_id = reject_thread_id.clone();
                                                                                                         let set_selected_job_detail = set_selected_job_detail;
+                                                                                                        let set_selected_thread = set_selected_thread;
                                                                                                         let set_status_text = set_status_text;
                                                                                                         async move {
                                                                                                             match resolve_approval(&approval_id, "rejected", "user", "Push rejected from UI").await {
                                                                                                                 Ok(_) => {
-                                                                                                                    set_status_text.set("Rejection recorded.".to_string());
+                                                                                                                    set_status_text.set("Push rejected. The branch was not pushed.".to_string());
                                                                                                                     let _ = sync_selected_job(
                                                                                                                         approval_job_id,
                                                                                                                         set_selected_job_detail,
+                                                                                                                        set_status_text,
+                                                                                                                    )
+                                                                                                                    .await;
+                                                                                                                    let _ = sync_selected_thread(
+                                                                                                                        thread_id,
+                                                                                                                        set_selected_thread,
                                                                                                                         set_status_text,
                                                                                                                     )
                                                                                                                     .await;
@@ -1850,6 +1968,49 @@ fn message_mode_badge(message: &MessageRecord) -> Option<(&'static str, &'static
         Some(("system", "System"))
     } else {
         None
+    }
+}
+
+fn status_badge_class(status: &str) -> &'static str {
+    match status {
+        "pending" => "pending",
+        "dispatched" => "dispatched",
+        "accepted" => "accepted",
+        "running" => "running",
+        "pushing" => "pushing",
+        "awaiting_approval" => "awaiting_approval",
+        "completed" => "completed",
+        "approved" => "approved",
+        "success" => "success",
+        "failed" => "failed",
+        "rejected" => "rejected",
+        "failure" => "failure",
+        _ => "pending",
+    }
+}
+
+fn approval_status_note(approval_status: &str, job_status: &str) -> String {
+    match (approval_status, job_status) {
+        ("pending", _) => {
+            "Review the summary and approve when you want the laptop to push the branch."
+                .to_string()
+        }
+        ("approved", "pushing") => {
+            "Push approval was granted and the laptop is currently pushing the branch.".to_string()
+        }
+        ("approved", "completed") => {
+            "Push approval was granted and the job has finished its post-approval push step."
+                .to_string()
+        }
+        ("approved", _) => {
+            "Push approval was granted. Waiting for the post-approval push lifecycle to settle."
+                .to_string()
+        }
+        ("rejected", _) => {
+            "Push was rejected. The job summary remains available, but no branch was pushed."
+                .to_string()
+        }
+        _ => "This approval record is retained as part of the job audit trail.".to_string(),
     }
 }
 
