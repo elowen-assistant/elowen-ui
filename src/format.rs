@@ -55,6 +55,17 @@ pub(crate) fn message_execution_draft(message: &MessageRecord) -> Option<Executi
         .and_then(|value| serde_json::from_value(value).ok())
 }
 
+pub(crate) fn message_result_details(message: &MessageRecord) -> Option<String> {
+    message
+        .payload_json
+        .get("job_result")
+        .and_then(|value| value.get("details"))
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
+}
+
 pub(crate) fn execution_intent_label(intent: &ExecutionIntent) -> &'static str {
     match intent {
         ExecutionIntent::WorkspaceChange => "Workspace Change",
@@ -149,7 +160,10 @@ pub(crate) fn format_string_list(values: &[String]) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{execution_intent_label, message_execution_draft, report_last_message};
+    use super::{
+        execution_intent_label, message_execution_draft, message_result_details,
+        report_last_message,
+    };
     use crate::models::ExecutionIntent;
     use crate::models::MessageRecord;
     use serde_json::json;
@@ -195,6 +209,27 @@ mod tests {
         assert_eq!(
             execution_intent_label(&ExecutionIntent::ReadOnly),
             "Read-Only Investigation"
+        );
+    }
+
+    #[test]
+    fn extracts_message_result_details() {
+        let message = MessageRecord {
+            id: "m2".into(),
+            role: "assistant".into(),
+            content: "result".into(),
+            status: "job_event:job:completed".into(),
+            payload_json: json!({
+                "job_result": {
+                    "details": "Detailed job metadata"
+                }
+            }),
+            created_at: String::new(),
+        };
+
+        assert_eq!(
+            message_result_details(&message),
+            Some("Detailed job metadata".to_string())
         );
     }
 }

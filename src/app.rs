@@ -9,8 +9,9 @@ use crate::{
     },
     format::{
         approval_status_note, execution_intent_label, format_json_value, format_string_list,
-        message_execution_draft, message_mode_badge, message_mode_class, report_array_strings,
-        report_diff_stat, report_last_message, report_status_label, status_badge_class,
+        message_execution_draft, message_mode_badge, message_mode_class, message_result_details,
+        report_array_strings, report_diff_stat, report_last_message, report_status_label,
+        status_badge_class,
     },
     models::*,
 };
@@ -1250,6 +1251,7 @@ pub fn App() -> impl IntoView {
                                                 let message_id = message.id.clone();
                                                 let message_role = message.role.clone();
                                                 let execution_draft = message_execution_draft(&message);
+                                                let result_details = message_result_details(&message);
                                                 let message_mode_class = message_mode_class(&message);
                                                 let message_mode_badge = message_mode_badge(&message);
                                                 let can_dispatch = message_role == "user"
@@ -1311,6 +1313,14 @@ pub fn App() -> impl IntoView {
                                                             <span>{message.created_at.clone()}</span>
                                                         </header>
                                                         <p class="message-body">{message.content.clone()}</p>
+                                                        {result_details.map(|details| {
+                                                            view! {
+                                                                <details class="message-details">
+                                                                    <summary>"More Details"</summary>
+                                                                    <pre>{details}</pre>
+                                                                </details>
+                                                            }
+                                                        })}
                                                         {execution_draft
                                                             .clone()
                                                             .map(|draft| {
