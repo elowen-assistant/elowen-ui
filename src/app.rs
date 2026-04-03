@@ -27,7 +27,19 @@ struct MessageRecord {
     role: String,
     content: String,
     status: String,
+    payload_json: Value,
     created_at: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+struct ExecutionDraft {
+    title: String,
+    repo_name: Option<String>,
+    base_branch: String,
+    request_text: String,
+    source_message_id: String,
+    source_role: String,
+    rationale: String,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq)]
@@ -146,6 +158,7 @@ struct DispatchThreadMessageRequest {
     title: String,
     repo_name: String,
     base_branch: String,
+    request_text: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -600,6 +613,7 @@ pub fn App() -> impl IntoView {
                 .message.assistant { background: #eef6f3; }
                 .message.system { background: #f5f0fb; }
                 .message.mode-conversation { border-color: #7aa88b; }
+                .message.mode-draft-ready { box-shadow: inset 0 0 0 1px rgba(31, 90, 77, 0.12); }
                 .message.mode-handoff { border-color: #8b6a42; background: #fbf4e8; }
                 .message.mode-dispatch, .message.mode-job-update { border-color: #6c7ea6; }
                 .message-header {
@@ -633,6 +647,57 @@ pub fn App() -> impl IntoView {
                 .mode-badge.job-update { background: #dde7f7; color: #2f4b7f; }
                 .mode-badge.system { background: #efe7fb; color: #5d3e84; }
                 .message-body { white-space: pre-wrap; }
+                .execution-draft {
+                    margin-top: 14px;
+                    padding: 14px;
+                    border: 1px solid #b8d3c7;
+                    border-radius: 16px;
+                    background: rgba(255, 255, 255, 0.78);
+                    display: grid;
+                    gap: 10px;
+                }
+                .execution-draft header {
+                    display: flex;
+                    justify-content: space-between;
+                    gap: 12px;
+                    flex-wrap: wrap;
+                    color: var(--muted);
+                    font-size: 0.82rem;
+                }
+                .execution-draft h4 {
+                    margin: 0;
+                    font-size: 1rem;
+                    color: var(--ink);
+                }
+                .draft-grid {
+                    display: grid;
+                    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+                    gap: 10px;
+                }
+                .draft-field {
+                    display: grid;
+                    gap: 6px;
+                    font-size: 0.84rem;
+                    color: var(--muted);
+                }
+                .draft-field strong {
+                    color: var(--ink);
+                    font-size: 0.9rem;
+                }
+                .draft-field textarea {
+                    min-height: 96px;
+                }
+                .draft-actions {
+                    display: flex;
+                    flex-wrap: wrap;
+                    gap: 10px;
+                    align-items: center;
+                }
+                .draft-rationale {
+                    color: var(--muted);
+                    font-size: 0.88rem;
+                    margin: 0;
+                }
                 .empty {
                     padding: 36px 24px;
                     border: 1px dashed var(--line);
@@ -1350,16 +1415,42 @@ pub fn App() -> impl IntoView {
                                             children=move |message| {
                                                 let message_id = message.id.clone();
                                                 let message_role = message.role.clone();
+                                                let execution_draft = message_execution_draft(&message);
                                                 let message_mode_class = message_mode_class(&message);
                                                 let message_mode_badge = message_mode_badge(&message);
                                                 let can_dispatch = message_role == "user"
                                                     || (message_role == "assistant"
-                                                        && message.status == "conversation.reply");
+                                                        && message.status == "conversation.reply"
+                                                        && execution_draft.is_none());
                                                 let dispatch_label = if message_role == "assistant" {
                                                     "Dispatch This Plan"
                                                 } else {
                                                     "Dispatch This Request"
                                                 };
+                                                let (draft_title, set_draft_title) = signal(
+                                                    execution_draft
+                                                        .as_ref()
+                                                        .map(|draft| draft.title.clone())
+                                                        .unwrap_or_default(),
+                                                );
+                                                let (draft_repo_name, set_draft_repo_name) = signal(
+                                                    execution_draft
+                                                        .as_ref()
+                                                        .and_then(|draft| draft.repo_name.clone())
+                                                        .unwrap_or_default(),
+                                                );
+                                                let (draft_base_branch, set_draft_base_branch) = signal(
+                                                    execution_draft
+                                                        .as_ref()
+                                                        .map(|draft| draft.base_branch.clone())
+                                                        .unwrap_or_else(|| "main".to_string()),
+                                                );
+                                                let (draft_request_text, set_draft_request_text) = signal(
+                                                    execution_draft
+                                                        .as_ref()
+                                                        .map(|draft| draft.request_text.clone())
+                                                        .unwrap_or_default(),
+                                                );
                                                 view! {
                                                     <article class=format!(
                                                         "message {} {}",
@@ -1382,6 +1473,142 @@ pub fn App() -> impl IntoView {
                                                             <span>{message.created_at.clone()}</span>
                                                         </header>
                                                         <p class="message-body">{message.content.clone()}</p>
+                                                        {execution_draft
+                                                            .clone()
+                                                            .map(|draft| {
+                                                                let message_thread_id = message_actions_thread_id.clone();
+                                                                let source_message_id = message_id.clone();
+                                                                let source_role = draft.source_role.clone();
+                                                                let rationale = draft.rationale.clone();
+                                                                view! {
+                                                                    <section class="execution-draft">
+                                                                        <header>
+                                                                            <div>
+                                                                                <h4>"Execution Draft"</h4>
+                                                                                <p class="draft-rationale">{rationale}</p>
+                                                                            </div>
+                                                                            <span>{format!(
+                                                                                "From {} message {}",
+                                                                                draft.source_role,
+                                                                                draft.source_message_id
+                                                                            )}</span>
+                                                                        </header>
+                                                                        <div class="draft-grid">
+                                                                            <label class="draft-field">
+                                                                                <strong>"Title"</strong>
+                                                                                <input
+                                                                                    type="text"
+                                                                                    prop:value=move || draft_title.get()
+                                                                                    on:input=move |ev| set_draft_title.set(event_target_value(&ev))
+                                                                                />
+                                                                            </label>
+                                                                            <label class="draft-field">
+                                                                                <strong>"Repository"</strong>
+                                                                                <input
+                                                                                    type="text"
+                                                                                    prop:value=move || draft_repo_name.get()
+                                                                                    on:input=move |ev| set_draft_repo_name.set(event_target_value(&ev))
+                                                                                />
+                                                                            </label>
+                                                                            <label class="draft-field">
+                                                                                <strong>"Base Branch"</strong>
+                                                                                <input
+                                                                                    type="text"
+                                                                                    prop:value=move || draft_base_branch.get()
+                                                                                    on:input=move |ev| set_draft_base_branch.set(event_target_value(&ev))
+                                                                                />
+                                                                            </label>
+                                                                        </div>
+                                                                        <label class="draft-field">
+                                                                            <strong>"Request Text"</strong>
+                                                                            <textarea
+                                                                                prop:value=move || draft_request_text.get()
+                                                                                on:input=move |ev| set_draft_request_text.set(event_target_value(&ev))
+                                                                            />
+                                                                        </label>
+                                                                        <div class="draft-actions">
+                                                                            <button
+                                                                                type="button"
+                                                                                on:click={
+                                                                                    move |_| {
+                                                                                        let title = draft_title.get_untracked().trim().to_string();
+                                                                                        let repo_name = draft_repo_name.get_untracked().trim().to_string();
+                                                                                        let base_branch = draft_base_branch.get_untracked().trim().to_string();
+                                                                                        let request_text = draft_request_text.get_untracked().trim().to_string();
+                                                                                        if repo_name.is_empty() {
+                                                                                            set_status_text.set("Repository is required before dispatching a draft.".to_string());
+                                                                                            return;
+                                                                                        }
+                                                                                        if request_text.is_empty() {
+                                                                                            set_status_text.set("Request text is required before dispatching a draft.".to_string());
+                                                                                            return;
+                                                                                        }
+
+                                                                                        spawn_local({
+                                                                                            let set_selected_thread = set_selected_thread;
+                                                                                            let set_preferred_job_id = set_preferred_job_id;
+                                                                                            let set_selected_job_id = set_selected_job_id;
+                                                                                            let set_status_text = set_status_text;
+                                                                                            let set_threads = set_threads;
+                                                                                            let set_jobs = set_jobs;
+                                                                                            let selected_thread_id = selected_thread_id;
+                                                                                            let set_selected_thread_id = set_selected_thread_id;
+                                                                                            let thread_id = message_thread_id.clone();
+                                                                                            let source_message_id = source_message_id.clone();
+                                                                                            let source_role = source_role.clone();
+
+                                                                                            async move {
+                                                                                                match dispatch_thread_message(
+                                                                                                    &thread_id,
+                                                                                                    &source_message_id,
+                                                                                                    &title,
+                                                                                                    &repo_name,
+                                                                                                    &base_branch,
+                                                                                                    Some(request_text),
+                                                                                                )
+                                                                                                .await
+                                                                                                {
+                                                                                                    Ok(job) => {
+                                                                                                        set_preferred_job_id.set(Some(job.id.clone()));
+                                                                                                        set_selected_job_id.set(Some(job.id.clone()));
+                                                                                                        set_status_text.set(format!(
+                                                                                                            "Promoted {} draft into job {}.",
+                                                                                                            source_role,
+                                                                                                            job.short_id
+                                                                                                        ));
+                                                                                                        let _ = sync_selected_thread(
+                                                                                                            thread_id.clone(),
+                                                                                                            set_selected_thread,
+                                                                                                            set_status_text,
+                                                                                                        )
+                                                                                                        .await;
+                                                                                                        let _ = sync_thread_list(
+                                                                                                            set_threads,
+                                                                                                            selected_thread_id,
+                                                                                                            set_selected_thread_id,
+                                                                                                            set_status_text,
+                                                                                                        )
+                                                                                                        .await;
+                                                                                                        let _ = sync_job_list(set_jobs).await;
+                                                                                                    }
+                                                                                                    Err(error) => {
+                                                                                                        set_status_text.set(format!(
+                                                                                                            "Failed to dispatch execution draft: {error}"
+                                                                                                        ));
+                                                                                                    }
+                                                                                                }
+                                                                                            }
+                                                                                        });
+                                                                                    }
+                                                                                }
+                                                                            >
+                                                                                "Dispatch Draft"
+                                                                            </button>
+                                                                            <span>"Review the fields here, then explicitly promote the draft into Workflow #1."</span>
+                                                                        </div>
+                                                                    </section>
+                                                                }
+                                                            })}
                                                         {if can_dispatch {
                                                             view! {
                                                                 <div class="thread-meta">
@@ -1415,7 +1642,7 @@ pub fn App() -> impl IntoView {
                                                                                     let source_role = source_role.clone();
 
                                                                                     async move {
-                                                                                        match dispatch_thread_message(&thread_id, &source_message_id, &title, &repo_name, &base_branch).await {
+                                                                                        match dispatch_thread_message(&thread_id, &source_message_id, &title, &repo_name, &base_branch, None).await {
                                                                                             Ok(job) => {
                                                                                                 set_preferred_job_id.set(Some(job.id.clone()));
                                                                                                 set_selected_job_id.set(Some(job.id.clone()));
@@ -1801,6 +2028,7 @@ async fn dispatch_thread_message(
     title: &str,
     repo_name: &str,
     base_branch: &str,
+    request_text: Option<String>,
 ) -> Result<JobRecord, String> {
     let response: MessageDispatchResponse = decode_json(
         Request::post(&format!(
@@ -1812,6 +2040,7 @@ async fn dispatch_thread_message(
             title: title.to_string(),
             repo_name: repo_name.to_string(),
             base_branch: base_branch.to_string(),
+            request_text,
         })
         .map_err(|error| error.to_string())?
         .send()
@@ -1941,8 +2170,18 @@ fn report_array_strings(report: &Value, key: &str) -> Vec<String> {
         .unwrap_or_default()
 }
 
+fn message_execution_draft(message: &MessageRecord) -> Option<ExecutionDraft> {
+    message
+        .payload_json
+        .get("execution_draft")
+        .cloned()
+        .and_then(|value| serde_json::from_value(value).ok())
+}
+
 fn message_mode_class(message: &MessageRecord) -> &'static str {
-    if message.status == "conversation.reply" {
+    if message.status == "conversation.reply" && message_execution_draft(message).is_some() {
+        "mode-conversation mode-draft-ready"
+    } else if message.status == "conversation.reply" {
         "mode-conversation"
     } else if message.status == "workflow.handoff.created" {
         "mode-handoff"
@@ -1956,7 +2195,9 @@ fn message_mode_class(message: &MessageRecord) -> &'static str {
 }
 
 fn message_mode_badge(message: &MessageRecord) -> Option<(&'static str, &'static str)> {
-    if message.status == "conversation.reply" {
+    if message.status == "conversation.reply" && message_execution_draft(message).is_some() {
+        Some(("conversation", "Draft Ready"))
+    } else if message.status == "conversation.reply" {
         Some(("conversation", "Conversation"))
     } else if message.status == "workflow.handoff.created" {
         Some(("handoff", "Workflow Handoff"))
