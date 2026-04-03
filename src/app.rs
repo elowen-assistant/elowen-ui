@@ -1,210 +1,19 @@
-use gloo_net::http::{Request, Response};
 use gloo_timers::future::TimeoutFuture;
 use leptos::{ev, prelude::*, task::spawn_local};
-use serde::{Deserialize, Serialize, de::DeserializeOwned};
-use serde_json::Value;
 
-#[derive(Clone, Debug, Deserialize, PartialEq)]
-struct ThreadSummary {
-    id: String,
-    title: String,
-    status: String,
-    message_count: i64,
-    updated_at: String,
-}
-
-#[derive(Clone, Debug, Deserialize, PartialEq)]
-struct ThreadRecord {
-    id: String,
-    title: String,
-    status: String,
-    updated_at: String,
-}
-
-#[derive(Clone, Debug, Deserialize, PartialEq)]
-struct MessageRecord {
-    id: String,
-    role: String,
-    content: String,
-    status: String,
-    payload_json: Value,
-    created_at: String,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
-struct ExecutionDraft {
-    title: String,
-    repo_name: Option<String>,
-    base_branch: String,
-    request_text: String,
-    source_message_id: String,
-    source_role: String,
-    rationale: String,
-}
-
-#[derive(Clone, Debug, Deserialize, PartialEq)]
-struct JobRecord {
-    id: String,
-    short_id: String,
-    correlation_id: String,
-    thread_id: String,
-    title: String,
-    status: String,
-    result: Option<String>,
-    failure_class: Option<String>,
-    repo_name: String,
-    device_id: Option<String>,
-    branch_name: Option<String>,
-    base_branch: Option<String>,
-    created_at: String,
-    updated_at: String,
-}
-
-#[derive(Clone, Debug, Deserialize, PartialEq)]
-struct JobEventRecord {
-    id: String,
-    correlation_id: String,
-    event_type: String,
-    payload_json: Value,
-    created_at: String,
-}
-
-#[derive(Clone, Debug, Deserialize, PartialEq)]
-struct ThreadDetail {
-    #[serde(flatten)]
-    thread: ThreadRecord,
-    messages: Vec<MessageRecord>,
-    jobs: Vec<JobRecord>,
-    related_notes: Vec<NoteRecord>,
-}
-
-#[derive(Clone, Debug, Deserialize, PartialEq)]
-struct JobDetail {
-    #[serde(flatten)]
-    job: JobRecord,
-    execution_report_json: Value,
-    summary: Option<SummaryRecord>,
-    approvals: Vec<ApprovalRecord>,
-    related_notes: Vec<NoteRecord>,
-    events: Vec<JobEventRecord>,
-}
-
-#[derive(Clone, Debug, Deserialize, PartialEq)]
-struct NoteRecord {
-    note_id: String,
-    title: String,
-    slug: String,
-    summary: String,
-    tags: Vec<String>,
-    aliases: Vec<String>,
-    note_type: String,
-    source_kind: Option<String>,
-    source_id: Option<String>,
-    current_revision_id: String,
-    updated_at: String,
-}
-
-#[derive(Clone, Debug, Deserialize, PartialEq)]
-struct SummaryRecord {
-    id: String,
-    scope: String,
-    source_id: String,
-    version: i32,
-    content: String,
-    created_at: String,
-}
-
-#[derive(Clone, Debug, Deserialize, PartialEq)]
-struct ApprovalRecord {
-    id: String,
-    thread_id: String,
-    job_id: String,
-    action_type: String,
-    status: String,
-    summary: String,
-    resolved_by: Option<String>,
-    resolution_reason: Option<String>,
-    created_at: String,
-    resolved_at: Option<String>,
-    updated_at: String,
-}
-
-#[derive(Debug, Deserialize)]
-struct ApiError {
-    error: String,
-}
-
-#[derive(Debug, Serialize)]
-struct CreateThreadRequest {
-    title: String,
-}
-
-#[derive(Debug, Serialize)]
-struct CreateChatDispatchRequest {
-    content: String,
-    title: String,
-    repo_name: String,
-    base_branch: String,
-}
-
-#[derive(Debug, Serialize)]
-struct CreateThreadChatRequest {
-    content: String,
-}
-
-#[derive(Debug, Serialize)]
-struct DispatchThreadMessageRequest {
-    source_message_id: String,
-    title: String,
-    repo_name: String,
-    base_branch: String,
-    request_text: Option<String>,
-}
-
-#[derive(Debug, Serialize)]
-struct CreateJobRequest {
-    title: String,
-    repo_name: String,
-    base_branch: String,
-    request_text: String,
-}
-
-#[derive(Debug, Serialize)]
-struct ResolveApprovalRequest {
-    status: String,
-    resolved_by: String,
-    reason: String,
-}
-
-#[derive(Debug, Deserialize)]
-struct ChatDispatchResponse {
-    message: MessageRecord,
-    acknowledgement: MessageRecord,
-    job: JobRecord,
-}
-
-#[derive(Debug, Deserialize)]
-struct ChatReplyResponse {
-    user_message: MessageRecord,
-    assistant_message: MessageRecord,
-}
-
-#[derive(Debug, Deserialize)]
-struct MessageDispatchResponse {
-    source_message: MessageRecord,
-    acknowledgement: MessageRecord,
-    job: JobRecord,
-}
-
-#[derive(Debug, Serialize)]
-struct PromoteJobNoteRequest {
-    title: Option<String>,
-    summary: Option<String>,
-    body_markdown: Option<String>,
-    tags: Vec<String>,
-    aliases: Vec<String>,
-    note_type: Option<String>,
-}
+use crate::{
+    api::{
+        create_job, create_thread, dispatch_chat_message, dispatch_thread_message, fetch_job,
+        fetch_jobs, fetch_thread, fetch_threads, promote_job_note, resolve_approval,
+        send_thread_chat_message,
+    },
+    format::{
+        approval_status_note, format_json_value, format_string_list, message_execution_draft,
+        message_mode_badge, message_mode_class, report_array_strings, report_diff_stat,
+        report_last_message, report_status_label, status_badge_class,
+    },
+    models::*,
+};
 
 #[component]
 pub fn App() -> impl IntoView {
@@ -223,17 +32,32 @@ pub fn App() -> impl IntoView {
     let (new_job_request_text, set_new_job_request_text) = signal(String::new());
     let (status_text, set_status_text) = signal(String::from("Loading threads and jobs..."));
 
-    spawn_local({
-        let set_threads = set_threads;
-        let set_jobs = set_jobs;
-        let selected_thread_id = selected_thread_id;
-        let set_selected_thread_id = set_selected_thread_id;
-        let set_status_text = set_status_text;
-        let set_selected_thread = set_selected_thread;
-        let selected_job_id = selected_job_id;
-        let set_selected_job_detail = set_selected_job_detail;
+    spawn_local(async move {
+        if let Err(error) = sync_thread_list(
+            set_threads,
+            selected_thread_id,
+            set_selected_thread_id,
+            set_status_text,
+        )
+        .await
+        {
+            set_status_text.set(format!("Failed to load threads: {error}"));
+        }
 
-        async move {
+        if let Err(error) = sync_job_list(set_jobs).await {
+            set_status_text.set(format!("Failed to load jobs: {error}"));
+        }
+
+        if let Some(thread_id) = selected_thread_id.get_untracked()
+            && let Err(error) =
+                sync_selected_thread(thread_id, set_selected_thread, set_status_text).await
+        {
+            set_status_text.set(format!("Failed to load thread: {error}"));
+        }
+
+        loop {
+            TimeoutFuture::new(5_000).await;
+
             if let Err(error) = sync_thread_list(
                 set_threads,
                 selected_thread_id,
@@ -242,150 +66,88 @@ pub fn App() -> impl IntoView {
             )
             .await
             {
-                set_status_text.set(format!("Failed to load threads: {error}"));
+                set_status_text.set(format!("Failed to poll threads: {error}"));
             }
 
             if let Err(error) = sync_job_list(set_jobs).await {
-                set_status_text.set(format!("Failed to load jobs: {error}"));
+                set_status_text.set(format!("Failed to poll jobs: {error}"));
             }
 
-            if let Some(thread_id) = selected_thread_id.get_untracked() {
+            if let Some(thread_id) = selected_thread_id.get_untracked()
+                && let Err(error) =
+                    sync_selected_thread(thread_id, set_selected_thread, set_status_text).await
+            {
+                set_status_text.set(format!("Failed to refresh thread: {error}"));
+            }
+
+            if let Some(job_id) = selected_job_id.get_untracked()
+                && let Err(error) =
+                    sync_selected_job(job_id, set_selected_job_detail, set_status_text).await
+            {
+                set_status_text.set(format!("Failed to refresh job: {error}"));
+            }
+        }
+    });
+
+    Effect::new(move |_| {
+        if let Some(thread_id) = selected_thread_id.get() {
+            set_selected_job_id.set(None);
+            set_selected_job_detail.set(None);
+
+            spawn_local(async move {
                 if let Err(error) =
                     sync_selected_thread(thread_id, set_selected_thread, set_status_text).await
                 {
                     set_status_text.set(format!("Failed to load thread: {error}"));
                 }
-            }
-
-            loop {
-                TimeoutFuture::new(5_000).await;
-
-                if let Err(error) = sync_thread_list(
-                    set_threads,
-                    selected_thread_id,
-                    set_selected_thread_id,
-                    set_status_text,
-                )
-                .await
-                {
-                    set_status_text.set(format!("Failed to poll threads: {error}"));
-                }
-
-                if let Err(error) = sync_job_list(set_jobs).await {
-                    set_status_text.set(format!("Failed to poll jobs: {error}"));
-                }
-
-                if let Some(thread_id) = selected_thread_id.get_untracked() {
-                    if let Err(error) =
-                        sync_selected_thread(thread_id, set_selected_thread, set_status_text).await
-                    {
-                        set_status_text.set(format!("Failed to refresh thread: {error}"));
-                    }
-                }
-
-                if let Some(job_id) = selected_job_id.get_untracked() {
-                    if let Err(error) =
-                        sync_selected_job(job_id, set_selected_job_detail, set_status_text).await
-                    {
-                        set_status_text.set(format!("Failed to refresh job: {error}"));
-                    }
-                }
-            }
+            });
+        } else {
+            set_selected_thread.set(None);
+            set_selected_job_id.set(None);
+            set_selected_job_detail.set(None);
         }
     });
 
-    Effect::new({
-        let selected_thread_id = selected_thread_id;
-        let set_selected_thread = set_selected_thread;
-        let set_selected_job_id = set_selected_job_id;
-        let set_selected_job_detail = set_selected_job_detail;
-        let set_status_text = set_status_text;
-
-        move |_| {
-            if let Some(thread_id) = selected_thread_id.get() {
-                set_selected_job_id.set(None);
-                set_selected_job_detail.set(None);
-
-                spawn_local({
-                    let set_selected_thread = set_selected_thread;
-                    let set_status_text = set_status_text;
-                    async move {
-                        if let Err(error) =
-                            sync_selected_thread(thread_id, set_selected_thread, set_status_text)
-                                .await
-                        {
-                            set_status_text.set(format!("Failed to load thread: {error}"));
-                        }
-                    }
-                });
+    Effect::new(move |_| {
+        if let Some(thread) = selected_thread.get() {
+            let preferred_job_id = preferred_job_id.get_untracked();
+            let current_job_id = selected_job_id.get_untracked();
+            let next_job_id = if preferred_job_id
+                .as_ref()
+                .is_some_and(|job_id| thread.jobs.iter().any(|job| job.id == *job_id))
+            {
+                preferred_job_id.clone()
+            } else if current_job_id
+                .as_ref()
+                .is_some_and(|job_id| thread.jobs.iter().any(|job| job.id == *job_id))
+            {
+                current_job_id.clone()
             } else {
-                set_selected_thread.set(None);
-                set_selected_job_id.set(None);
-                set_selected_job_detail.set(None);
+                thread.jobs.first().map(|job| job.id.clone())
+            };
+            if next_job_id != current_job_id {
+                set_selected_job_id.set(next_job_id);
             }
+            if preferred_job_id.is_some() {
+                set_preferred_job_id.set(None);
+            }
+        } else {
+            set_selected_job_id.set(None);
+            set_selected_job_detail.set(None);
         }
     });
 
-    Effect::new({
-        let selected_thread = selected_thread;
-        let preferred_job_id = preferred_job_id;
-        let selected_job_id = selected_job_id;
-        let set_preferred_job_id = set_preferred_job_id;
-        let set_selected_job_id = set_selected_job_id;
-        let set_selected_job_detail = set_selected_job_detail;
-
-        move |_| {
-            if let Some(thread) = selected_thread.get() {
-                let preferred_job_id = preferred_job_id.get_untracked();
-                let current_job_id = selected_job_id.get_untracked();
-                let next_job_id = if preferred_job_id
-                    .as_ref()
-                    .is_some_and(|job_id| thread.jobs.iter().any(|job| job.id == *job_id))
+    Effect::new(move |_| {
+        if let Some(job_id) = selected_job_id.get() {
+            spawn_local(async move {
+                if let Err(error) =
+                    sync_selected_job(job_id, set_selected_job_detail, set_status_text).await
                 {
-                    preferred_job_id.clone()
-                } else if current_job_id
-                    .as_ref()
-                    .is_some_and(|job_id| thread.jobs.iter().any(|job| job.id == *job_id))
-                {
-                    current_job_id.clone()
-                } else {
-                    thread.jobs.first().map(|job| job.id.clone())
-                };
-                if next_job_id != current_job_id {
-                    set_selected_job_id.set(next_job_id);
+                    set_status_text.set(format!("Failed to load job: {error}"));
                 }
-                if preferred_job_id.is_some() {
-                    set_preferred_job_id.set(None);
-                }
-            } else {
-                set_selected_job_id.set(None);
-                set_selected_job_detail.set(None);
-            }
-        }
-    });
-
-    Effect::new({
-        let selected_job_id = selected_job_id;
-        let set_selected_job_detail = set_selected_job_detail;
-        let set_status_text = set_status_text;
-
-        move |_| {
-            if let Some(job_id) = selected_job_id.get() {
-                spawn_local({
-                    let set_selected_job_detail = set_selected_job_detail;
-                    let set_status_text = set_status_text;
-                    async move {
-                        if let Err(error) =
-                            sync_selected_job(job_id, set_selected_job_detail, set_status_text)
-                                .await
-                        {
-                            set_status_text.set(format!("Failed to load job: {error}"));
-                        }
-                    }
-                });
-            } else {
-                set_selected_job_detail.set(None);
-            }
+            });
+        } else {
+            set_selected_job_detail.set(None);
         }
     });
 
@@ -1984,362 +1746,4 @@ async fn sync_selected_job(
     set_selected_job_detail.set(Some(job));
     set_status_text.set("Job detail loaded.".to_string());
     Ok(())
-}
-
-fn api_base() -> String {
-    if let Some(origin) = web_sys::window()
-        .and_then(|window| window.location().origin().ok())
-        .filter(|value| !value.is_empty() && value != "null")
-    {
-        return format!("{origin}/api/v1");
-    }
-
-    "http://localhost:8080/api/v1".to_string()
-}
-
-async fn fetch_threads() -> Result<Vec<ThreadSummary>, String> {
-    decode_json(
-        Request::get(&format!("{}/threads", api_base()))
-            .send()
-            .await
-            .map_err(|error| error.to_string())?,
-    )
-    .await
-}
-
-async fn fetch_jobs() -> Result<Vec<JobRecord>, String> {
-    decode_json(
-        Request::get(&format!("{}/jobs", api_base()))
-            .send()
-            .await
-            .map_err(|error| error.to_string())?,
-    )
-    .await
-}
-
-async fn fetch_thread(thread_id: &str) -> Result<ThreadDetail, String> {
-    decode_json(
-        Request::get(&format!("{}/threads/{thread_id}", api_base()))
-            .send()
-            .await
-            .map_err(|error| error.to_string())?,
-    )
-    .await
-}
-
-async fn fetch_job(job_id: &str) -> Result<JobDetail, String> {
-    decode_json(
-        Request::get(&format!("{}/jobs/{job_id}", api_base()))
-            .send()
-            .await
-            .map_err(|error| error.to_string())?,
-    )
-    .await
-}
-
-async fn create_thread(title: &str) -> Result<ThreadDetail, String> {
-    decode_json(
-        Request::post(&format!("{}/threads", api_base()))
-            .json(&CreateThreadRequest {
-                title: title.to_string(),
-            })
-            .map_err(|error| error.to_string())?
-            .send()
-            .await
-            .map_err(|error| error.to_string())?,
-    )
-    .await
-}
-
-async fn send_thread_chat_message(thread_id: &str, content: &str) -> Result<(), String> {
-    let response: ChatReplyResponse = decode_json(
-        Request::post(&format!("{}/threads/{thread_id}/chat", api_base()))
-            .json(&CreateThreadChatRequest {
-                content: content.to_string(),
-            })
-            .map_err(|error| error.to_string())?
-            .send()
-            .await
-            .map_err(|error| error.to_string())?,
-    )
-    .await?;
-
-    let _ = (&response.user_message, &response.assistant_message);
-    Ok(())
-}
-
-async fn dispatch_chat_message(
-    thread_id: &str,
-    content: &str,
-    title: &str,
-    repo_name: &str,
-    base_branch: &str,
-) -> Result<JobRecord, String> {
-    let response: ChatDispatchResponse = decode_json(
-        Request::post(&format!("{}/threads/{thread_id}/chat-dispatch", api_base()))
-            .json(&CreateChatDispatchRequest {
-                content: content.to_string(),
-                title: title.to_string(),
-                repo_name: repo_name.to_string(),
-                base_branch: base_branch.to_string(),
-            })
-            .map_err(|error| error.to_string())?
-            .send()
-            .await
-            .map_err(|error| error.to_string())?,
-    )
-    .await?;
-
-    let _ = (&response.message, &response.acknowledgement);
-    Ok(response.job)
-}
-
-async fn dispatch_thread_message(
-    thread_id: &str,
-    source_message_id: &str,
-    title: &str,
-    repo_name: &str,
-    base_branch: &str,
-    request_text: Option<String>,
-) -> Result<JobRecord, String> {
-    let response: MessageDispatchResponse = decode_json(
-        Request::post(&format!(
-            "{}/threads/{thread_id}/message-dispatch",
-            api_base()
-        ))
-        .json(&DispatchThreadMessageRequest {
-            source_message_id: source_message_id.to_string(),
-            title: title.to_string(),
-            repo_name: repo_name.to_string(),
-            base_branch: base_branch.to_string(),
-            request_text,
-        })
-        .map_err(|error| error.to_string())?
-        .send()
-        .await
-        .map_err(|error| error.to_string())?,
-    )
-    .await?;
-
-    let _ = (&response.source_message, &response.acknowledgement);
-    Ok(response.job)
-}
-
-async fn create_job(
-    thread_id: &str,
-    title: &str,
-    repo_name: &str,
-    base_branch: &str,
-    request_text: &str,
-) -> Result<JobRecord, String> {
-    let detail: JobDetail = decode_json(
-        Request::post(&format!("{}/threads/{thread_id}/jobs", api_base()))
-            .json(&CreateJobRequest {
-                title: title.to_string(),
-                repo_name: repo_name.to_string(),
-                base_branch: base_branch.to_string(),
-                request_text: request_text.to_string(),
-            })
-            .map_err(|error| error.to_string())?
-            .send()
-            .await
-            .map_err(|error| error.to_string())?,
-    )
-    .await?;
-
-    Ok(detail.job)
-}
-
-async fn promote_job_note(job_id: &str) -> Result<NoteRecord, String> {
-    decode_json(
-        Request::post(&format!("{}/jobs/{job_id}/notes/promote", api_base()))
-            .json(&PromoteJobNoteRequest {
-                title: None,
-                summary: None,
-                body_markdown: None,
-                tags: vec!["job".to_string(), "promoted".to_string()],
-                aliases: Vec::new(),
-                note_type: Some("job-summary".to_string()),
-            })
-            .map_err(|error| error.to_string())?
-            .send()
-            .await
-            .map_err(|error| error.to_string())?,
-    )
-    .await
-}
-
-async fn resolve_approval(
-    approval_id: &str,
-    status: &str,
-    resolved_by: &str,
-    reason: &str,
-) -> Result<ApprovalRecord, String> {
-    decode_json(
-        Request::post(&format!("{}/approvals/{approval_id}/resolve", api_base()))
-            .json(&ResolveApprovalRequest {
-                status: status.to_string(),
-                resolved_by: resolved_by.to_string(),
-                reason: reason.to_string(),
-            })
-            .map_err(|error| error.to_string())?
-            .send()
-            .await
-            .map_err(|error| error.to_string())?,
-    )
-    .await
-}
-
-async fn decode_json<T>(response: Response) -> Result<T, String>
-where
-    T: DeserializeOwned,
-{
-    let status = response.status();
-    let body = response.text().await.map_err(|error| error.to_string())?;
-
-    if !(200..300).contains(&status) {
-        if let Ok(api_error) = serde_json::from_str::<ApiError>(&body) {
-            return Err(api_error.error);
-        }
-
-        return Err(format!("request failed with status {status}: {body}"));
-    }
-
-    serde_json::from_str::<T>(&body).map_err(|error| error.to_string())
-}
-
-fn format_json_value(value: &Value) -> String {
-    serde_json::to_string_pretty(value).unwrap_or_else(|_| value.to_string())
-}
-
-fn report_status_label(report: &Value, key: &str) -> String {
-    report
-        .get(key)
-        .and_then(|value| value.get("status"))
-        .and_then(Value::as_str)
-        .unwrap_or("unknown")
-        .to_string()
-}
-
-fn report_diff_stat(report: &Value) -> Option<String> {
-    report
-        .get("diff_stat")
-        .and_then(Value::as_str)
-        .map(ToOwned::to_owned)
-}
-
-fn report_last_message(report: &Value) -> Option<String> {
-    report
-        .get("last_message")
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(ToOwned::to_owned)
-}
-
-fn report_array_strings(report: &Value, key: &str) -> Vec<String> {
-    report
-        .get(key)
-        .and_then(Value::as_array)
-        .map(|values| {
-            values
-                .iter()
-                .filter_map(Value::as_str)
-                .map(ToOwned::to_owned)
-                .collect::<Vec<_>>()
-        })
-        .unwrap_or_default()
-}
-
-fn message_execution_draft(message: &MessageRecord) -> Option<ExecutionDraft> {
-    message
-        .payload_json
-        .get("execution_draft")
-        .cloned()
-        .and_then(|value| serde_json::from_value(value).ok())
-}
-
-fn message_mode_class(message: &MessageRecord) -> &'static str {
-    if message.status == "conversation.reply" && message_execution_draft(message).is_some() {
-        "mode-conversation mode-draft-ready"
-    } else if message.status == "conversation.reply" {
-        "mode-conversation"
-    } else if message.status == "workflow.handoff.created" {
-        "mode-handoff"
-    } else if message.status == "workflow.dispatch.created" {
-        "mode-dispatch"
-    } else if message.status.starts_with("job_event:") {
-        "mode-job-update"
-    } else {
-        ""
-    }
-}
-
-fn message_mode_badge(message: &MessageRecord) -> Option<(&'static str, &'static str)> {
-    if message.status == "conversation.reply" && message_execution_draft(message).is_some() {
-        Some(("conversation", "Draft Ready"))
-    } else if message.status == "conversation.reply" {
-        Some(("conversation", "Conversation"))
-    } else if message.status == "workflow.handoff.created" {
-        Some(("handoff", "Workflow Handoff"))
-    } else if message.status == "workflow.dispatch.created" {
-        Some(("dispatch", "Direct Dispatch"))
-    } else if message.status.starts_with("job_event:") {
-        Some(("job-update", "Job Update"))
-    } else if message.role == "system" {
-        Some(("system", "System"))
-    } else {
-        None
-    }
-}
-
-fn status_badge_class(status: &str) -> &'static str {
-    match status {
-        "pending" => "pending",
-        "dispatched" => "dispatched",
-        "accepted" => "accepted",
-        "running" => "running",
-        "pushing" => "pushing",
-        "awaiting_approval" => "awaiting_approval",
-        "completed" => "completed",
-        "approved" => "approved",
-        "success" => "success",
-        "failed" => "failed",
-        "rejected" => "rejected",
-        "failure" => "failure",
-        _ => "pending",
-    }
-}
-
-fn approval_status_note(approval_status: &str, job_status: &str) -> String {
-    match (approval_status, job_status) {
-        ("pending", _) => {
-            "Review the summary and approve when you want the laptop to push the branch."
-                .to_string()
-        }
-        ("approved", "pushing") => {
-            "Push approval was granted and the laptop is currently pushing the branch.".to_string()
-        }
-        ("approved", "completed") => {
-            "Push approval was granted and the job has finished its post-approval push step."
-                .to_string()
-        }
-        ("approved", _) => {
-            "Push approval was granted. Waiting for the post-approval push lifecycle to settle."
-                .to_string()
-        }
-        ("rejected", _) => {
-            "Push was rejected. The job summary remains available, but no branch was pushed."
-                .to_string()
-        }
-        _ => "This approval record is retained as part of the job audit trail.".to_string(),
-    }
-}
-
-fn format_string_list(values: &[String]) -> String {
-    if values.is_empty() {
-        "none".to_string()
-    } else {
-        values.join("\n")
-    }
 }
