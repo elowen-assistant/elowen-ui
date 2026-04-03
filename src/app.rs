@@ -647,6 +647,58 @@ pub fn App() -> impl IntoView {
                 .mode-badge.job-update { background: #dde7f7; color: #2f4b7f; }
                 .mode-badge.system { background: #efe7fb; color: #5d3e84; }
                 .message-body { white-space: pre-wrap; }
+                .thread-composer {
+                    margin-top: 18px;
+                    padding: 16px;
+                    border: 1px solid var(--line);
+                    border-radius: 18px;
+                    background: rgba(255, 255, 255, 0.86);
+                    display: grid;
+                    gap: 12px;
+                }
+                .composer-header {
+                    display: flex;
+                    justify-content: space-between;
+                    gap: 12px;
+                    flex-wrap: wrap;
+                    color: var(--muted);
+                    font-size: 0.86rem;
+                }
+                .composer-actions {
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    gap: 10px;
+                    flex-wrap: wrap;
+                }
+                .composer-actions .button-secondary {
+                    background: #8b6a42;
+                }
+                .dispatch-fallback {
+                    border: 1px solid var(--line);
+                    border-radius: 16px;
+                    padding: 12px 14px;
+                    background: rgba(244, 240, 232, 0.65);
+                }
+                .dispatch-fallback summary {
+                    cursor: pointer;
+                    font-weight: 700;
+                    color: var(--ink);
+                }
+                .dispatch-fallback[open] {
+                    display: grid;
+                    gap: 10px;
+                }
+                .result-message {
+                    border: 1px solid #b8d3c7;
+                    border-radius: 16px;
+                    padding: 14px;
+                    background: #f6fbf8;
+                }
+                .result-message pre {
+                    background: transparent;
+                    padding: 0;
+                }
                 .execution-draft {
                     margin-top: 14px;
                     padding: 14px;
@@ -966,6 +1018,7 @@ pub fn App() -> impl IntoView {
                                             let build_status = report_status_label(&execution_report, "build");
                                             let test_status = report_status_label(&execution_report, "test");
                                             let diff_stat = report_diff_stat(&execution_report);
+                                            let last_message = report_last_message(&execution_report);
                                             let changed_files = report_array_strings(&execution_report, "changed_files");
                                             let git_status = report_array_strings(&execution_report, "git_status");
                                             let approvals = job_detail.approvals.clone();
@@ -1028,6 +1081,24 @@ pub fn App() -> impl IntoView {
                                                             <p class="eyebrow">"Changed Files"</p>
                                                             <strong>{changed_files.len()}</strong>
                                                         </article>
+                                                    </div>
+
+                                                    <div class="summary-block">
+                                                        <p class="eyebrow">"Outcome Message"</p>
+                                                        {if let Some(last_message) = last_message {
+                                                            view! {
+                                                                <article class="result-message">
+                                                                    <p class="eyebrow">"Runner Last Message"</p>
+                                                                    <pre>{last_message}</pre>
+                                                                </article>
+                                                            }.into_any()
+                                                        } else {
+                                                            view! {
+                                                                <div class="empty">
+                                                                    <p>"No final runner message was captured for this job."</p>
+                                                                </div>
+                                                            }.into_any()
+                                                        }}
                                                     </div>
 
                                                     <div class="summary-block">
@@ -1689,7 +1760,7 @@ pub fn App() -> impl IntoView {
                                             }
                                         />
                                     </div>
-                                    <form on:submit=move |ev: ev::SubmitEvent| {
+                                    <form class="thread-composer" on:submit=move |ev: ev::SubmitEvent| {
                                         ev.prevent_default();
                                         let content = new_message_content.get_untracked().trim().to_string();
                                         if content.is_empty() {
@@ -1733,7 +1804,7 @@ pub fn App() -> impl IntoView {
                                             }
                                         });
                                     }>
-                                        <div class="thread-meta">
+                                        <div class="composer-header">
                                             <span>"Conversational Chat"</span>
                                             <span>"Workflow #2 is the default. Use the dispatch controls below only when you want laptop execution."</span>
                                         </div>
@@ -1767,9 +1838,10 @@ pub fn App() -> impl IntoView {
                                                 on:input=move |ev| set_new_job_base_branch.set(event_target_value(&ev))
                                             />
                                         </details>
-                                        <div class="thread-meta">
+                                        <div class="composer-actions">
                                             <button type="submit">"Send"</button>
                                             <button
+                                                class="button-secondary"
                                                 type="button"
                                                 on:click={
                                                     let message_thread_id = draft_dispatch_thread_id.clone();
@@ -2153,6 +2225,15 @@ fn report_diff_stat(report: &Value) -> Option<String> {
     report
         .get("diff_stat")
         .and_then(Value::as_str)
+        .map(ToOwned::to_owned)
+}
+
+fn report_last_message(report: &Value) -> Option<String> {
+    report
+        .get("last_message")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
         .map(ToOwned::to_owned)
 }
 
