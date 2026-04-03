@@ -2,7 +2,7 @@
 
 use serde_json::Value;
 
-use crate::models::{ExecutionDraft, MessageRecord};
+use crate::models::{ExecutionDraft, ExecutionIntent, MessageRecord};
 
 pub(crate) fn format_json_value(value: &Value) -> String {
     serde_json::to_string_pretty(value).unwrap_or_else(|_| value.to_string())
@@ -53,6 +53,13 @@ pub(crate) fn message_execution_draft(message: &MessageRecord) -> Option<Executi
         .get("execution_draft")
         .cloned()
         .and_then(|value| serde_json::from_value(value).ok())
+}
+
+pub(crate) fn execution_intent_label(intent: &ExecutionIntent) -> &'static str {
+    match intent {
+        ExecutionIntent::WorkspaceChange => "Workspace Change",
+        ExecutionIntent::ReadOnly => "Read-Only Investigation",
+    }
 }
 
 pub(crate) fn message_mode_class(message: &MessageRecord) -> &'static str {
@@ -142,7 +149,8 @@ pub(crate) fn format_string_list(values: &[String]) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{message_execution_draft, report_last_message};
+    use super::{execution_intent_label, message_execution_draft, report_last_message};
+    use crate::models::ExecutionIntent;
     use crate::models::MessageRecord;
     use serde_json::json;
 
@@ -167,6 +175,7 @@ mod tests {
                     "repo_name": "elowen-api",
                     "base_branch": "main",
                     "request_text": "Update the README",
+                    "execution_intent": "workspace_change",
                     "source_message_id": "m1",
                     "source_role": "assistant",
                     "rationale": "test"
@@ -178,6 +187,14 @@ mod tests {
         assert_eq!(
             message_execution_draft(&message).map(|draft| draft.title),
             Some("Update README".to_string())
+        );
+    }
+
+    #[test]
+    fn labels_read_only_execution_intent() {
+        assert_eq!(
+            execution_intent_label(&ExecutionIntent::ReadOnly),
+            "Read-Only Investigation"
         );
     }
 }

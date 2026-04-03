@@ -8,9 +8,9 @@ use crate::{
         send_thread_chat_message,
     },
     format::{
-        approval_status_note, format_json_value, format_string_list, message_execution_draft,
-        message_mode_badge, message_mode_class, report_array_strings, report_diff_stat,
-        report_last_message, report_status_label, status_badge_class,
+        approval_status_note, execution_intent_label, format_json_value, format_string_list,
+        message_execution_draft, message_mode_badge, message_mode_class, report_array_strings,
+        report_diff_stat, report_last_message, report_status_label, status_badge_class,
     },
     models::*,
 };
@@ -1176,6 +1176,7 @@ pub fn App() -> impl IntoView {
                                                     &repo_name,
                                                     &base_branch,
                                                     &request_text,
+                                                    None,
                                                 )
                                                 .await
                                                 {
@@ -1284,6 +1285,10 @@ pub fn App() -> impl IntoView {
                                                         .map(|draft| draft.request_text.clone())
                                                         .unwrap_or_default(),
                                                 );
+                                                let draft_execution_intent = execution_draft
+                                                    .as_ref()
+                                                    .map(|draft| draft.execution_intent.clone())
+                                                    .unwrap_or(ExecutionIntent::WorkspaceChange);
                                                 view! {
                                                     <article class=format!(
                                                         "message {} {}",
@@ -1326,6 +1331,10 @@ pub fn App() -> impl IntoView {
                                                                                 draft.source_message_id
                                                                             )}</span>
                                                                         </header>
+                                                                        <div class="thread-meta">
+                                                                            <span>"Execution Mode"</span>
+                                                                            <span>{execution_intent_label(&draft_execution_intent)}</span>
+                                                                        </div>
                                                                         <div class="draft-grid">
                                                                             <label class="draft-field">
                                                                                 <strong>"Title"</strong>
@@ -1376,6 +1385,7 @@ pub fn App() -> impl IntoView {
                                                                                             set_status_text.set("Request text is required before dispatching a draft.".to_string());
                                                                                             return;
                                                                                         }
+                                                                                        let execution_intent = draft_execution_intent.clone();
 
                                                                                         spawn_local({
                                                                                             let set_selected_thread = set_selected_thread;
@@ -1398,6 +1408,7 @@ pub fn App() -> impl IntoView {
                                                                                                     &repo_name,
                                                                                                     &base_branch,
                                                                                                     Some(request_text),
+                                                                                                    Some(execution_intent),
                                                                                                 )
                                                                                                 .await
                                                                                                 {
@@ -1475,7 +1486,7 @@ pub fn App() -> impl IntoView {
                                                                                     let source_role = source_role.clone();
 
                                                                                     async move {
-                                                                                        match dispatch_thread_message(&thread_id, &source_message_id, &title, &repo_name, &base_branch, None).await {
+                                                                                        match dispatch_thread_message(&thread_id, &source_message_id, &title, &repo_name, &base_branch, None, None).await {
                                                                                             Ok(job) => {
                                                                                                 set_preferred_job_id.set(Some(job.id.clone()));
                                                                                                 set_selected_job_id.set(Some(job.id.clone()));
@@ -1635,7 +1646,7 @@ pub fn App() -> impl IntoView {
                                                         let thread_id = message_thread_id.clone();
 
                                                         async move {
-                                                            match dispatch_chat_message(&thread_id, &content, &title, &repo_name, &base_branch).await {
+                                                            match dispatch_chat_message(&thread_id, &content, &title, &repo_name, &base_branch, None).await {
                                                                 Ok(job) => {
                                                                     set_new_message_content.set(String::new());
                                                                     set_new_job_title.set(String::new());

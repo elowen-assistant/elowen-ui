@@ -93,6 +93,7 @@ pub(crate) async fn dispatch_chat_message(
     title: &str,
     repo_name: &str,
     base_branch: &str,
+    execution_intent: Option<ExecutionIntent>,
 ) -> Result<JobRecord, String> {
     let response: ChatDispatchResponse = decode_json(
         Request::post(&format!("{}/threads/{thread_id}/chat-dispatch", api_base()))
@@ -101,6 +102,7 @@ pub(crate) async fn dispatch_chat_message(
                 title: title.to_string(),
                 repo_name: repo_name.to_string(),
                 base_branch: base_branch.to_string(),
+                execution_intent,
             })
             .map_err(|error| error.to_string())?
             .send()
@@ -120,6 +122,7 @@ pub(crate) async fn dispatch_thread_message(
     repo_name: &str,
     base_branch: &str,
     request_text: Option<String>,
+    execution_intent: Option<ExecutionIntent>,
 ) -> Result<JobRecord, String> {
     let response: MessageDispatchResponse = decode_json(
         Request::post(&format!(
@@ -132,6 +135,7 @@ pub(crate) async fn dispatch_thread_message(
             repo_name: repo_name.to_string(),
             base_branch: base_branch.to_string(),
             request_text,
+            execution_intent,
         })
         .map_err(|error| error.to_string())?
         .send()
@@ -150,6 +154,7 @@ pub(crate) async fn create_job(
     repo_name: &str,
     base_branch: &str,
     request_text: &str,
+    execution_intent: Option<ExecutionIntent>,
 ) -> Result<JobRecord, String> {
     let detail: JobDetail = decode_json(
         Request::post(&format!("{}/threads/{thread_id}/jobs", api_base()))
@@ -158,6 +163,7 @@ pub(crate) async fn create_job(
                 repo_name: repo_name.to_string(),
                 base_branch: base_branch.to_string(),
                 request_text: request_text.to_string(),
+                execution_intent,
             })
             .map_err(|error| error.to_string())?
             .send()

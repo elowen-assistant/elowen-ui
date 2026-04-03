@@ -34,11 +34,19 @@ pub(crate) struct MessageRecord {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum ExecutionIntent {
+    WorkspaceChange,
+    ReadOnly,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub(crate) struct ExecutionDraft {
     pub(crate) title: String,
     pub(crate) repo_name: Option<String>,
     pub(crate) base_branch: String,
     pub(crate) request_text: String,
+    pub(crate) execution_intent: ExecutionIntent,
     pub(crate) source_message_id: String,
     pub(crate) source_role: String,
     pub(crate) rationale: String,
@@ -147,6 +155,7 @@ pub(crate) struct CreateChatDispatchRequest {
     pub(crate) title: String,
     pub(crate) repo_name: String,
     pub(crate) base_branch: String,
+    pub(crate) execution_intent: Option<ExecutionIntent>,
 }
 
 #[derive(Debug, Serialize)]
@@ -161,6 +170,7 @@ pub(crate) struct DispatchThreadMessageRequest {
     pub(crate) repo_name: String,
     pub(crate) base_branch: String,
     pub(crate) request_text: Option<String>,
+    pub(crate) execution_intent: Option<ExecutionIntent>,
 }
 
 #[derive(Debug, Serialize)]
@@ -169,6 +179,7 @@ pub(crate) struct CreateJobRequest {
     pub(crate) repo_name: String,
     pub(crate) base_branch: String,
     pub(crate) request_text: String,
+    pub(crate) execution_intent: Option<ExecutionIntent>,
 }
 
 #[derive(Debug, Serialize)]
