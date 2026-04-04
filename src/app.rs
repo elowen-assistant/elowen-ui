@@ -178,7 +178,7 @@ pub fn App() -> impl IntoView {
                 .app-shell { min-height: 100vh; padding: 24px; overflow-x: hidden; }
                 .frame {
                     display: grid;
-                    grid-template-columns: 340px 1fr;
+                    grid-template-columns: 308px 1fr;
                     gap: 20px;
                     max-width: 1280px;
                     margin: 0 auto;
@@ -192,8 +192,24 @@ pub fn App() -> impl IntoView {
                     backdrop-filter: blur(10px);
                     min-width: 0;
                 }
-                .sidebar { padding: 20px; display: flex; flex-direction: column; gap: 18px; }
+                .sidebar { padding: 18px; display: flex; flex-direction: column; gap: 16px; }
                 .content { padding: 24px; min-height: 70vh; min-width: 0; overflow-x: hidden; }
+                .sidebar-header {
+                    display: grid;
+                    gap: 10px;
+                }
+                .sidebar-status {
+                    display: grid;
+                    gap: 6px;
+                    padding: 12px 14px;
+                    border: 1px solid rgba(31, 90, 77, 0.08);
+                    border-radius: 16px;
+                    background: rgba(255, 255, 255, 0.72);
+                }
+                .sidebar-status .status {
+                    margin: 0;
+                    font-size: 0.86rem;
+                }
                 .eyebrow {
                     text-transform: uppercase;
                     letter-spacing: 0.12em;
@@ -265,11 +281,24 @@ pub fn App() -> impl IntoView {
                 .thread-card {
                     border: 1px solid var(--line);
                     border-radius: 16px;
-                    padding: 14px;
-                    background: #fff;
+                    padding: 14px 15px;
+                    background: rgba(255, 255, 255, 0.82);
                     cursor: pointer;
+                    display: grid;
+                    gap: 8px;
                 }
                 .thread-card.active { border-color: var(--accent); background: var(--accent-soft); }
+                .thread-card h3 {
+                    margin-bottom: 0;
+                    font-size: 1rem;
+                    line-height: 1.3;
+                }
+                .thread-card p {
+                    margin: 0;
+                    color: var(--muted);
+                    font-size: 0.84rem;
+                    line-height: 1.4;
+                }
                 .thread-meta, .job-meta, .message header, .job-event header {
                     display: flex;
                     justify-content: space-between;
@@ -636,11 +665,19 @@ pub fn App() -> impl IntoView {
             </style>
             <div class="frame">
                 <section class="panel sidebar">
-                    <div>
-                        <p class="eyebrow">"Elowen Workspace"</p>
-                        <h1>"Threads"</h1>
-                        <p class="status">{move || status_text.get()}</p>
+                    <div class="sidebar-header">
+                        <div>
+                            <p class="eyebrow">"Elowen Workspace"</p>
+                            <h1>"Inbox"</h1>
+                        </div>
+                        <div class="sidebar-status">
+                            <p class="eyebrow">"Workspace Status"</p>
+                            <p class="status">{move || status_text.get()}</p>
+                        </div>
                     </div>
+                    <details class="context-panel">
+                        <summary>"New Thread"</summary>
+                        <div class="context-panel-body">
                     <form on:submit=move |ev: ev::SubmitEvent| {
                         ev.prevent_default();
                         let title = new_thread_title.get_untracked().trim().to_string();
@@ -689,8 +726,10 @@ pub fn App() -> impl IntoView {
                         />
                         <button type="submit">"Create Thread"</button>
                     </form>
+                        </div>
+                    </details>
                     <div class="sidebar-section">
-                        <p class="eyebrow">"Threads"</p>
+                        <p class="eyebrow">"Recent Threads"</p>
                         <div class="thread-list">
                             <For
                                 each=move || threads.get()
@@ -698,6 +737,7 @@ pub fn App() -> impl IntoView {
                                 children=move |thread| {
                                     let active_thread_id = thread.id.clone();
                                     let click_thread_id = thread.id.clone();
+                                    let updated_at = thread.updated_at.clone();
                                     view! {
                                         <article
                                             class=("thread-card", true)
@@ -705,9 +745,10 @@ pub fn App() -> impl IntoView {
                                             on:click=move |_| set_selected_thread_id.set(Some(click_thread_id.clone()))
                                         >
                                             <h3>{thread.title.clone()}</h3>
+                                            <p>{format!("{} messages", thread.message_count)}</p>
                                             <div class="thread-meta">
-                                                <span>{format!("{} messages", thread.message_count)}</span>
                                                 <span>{thread.status.clone()}</span>
+                                                <span>{updated_at.clone()}</span>
                                             </div>
                                         </article>
                                     }
@@ -715,8 +756,9 @@ pub fn App() -> impl IntoView {
                             />
                         </div>
                     </div>
-                    <div class="sidebar-section">
-                        <p class="eyebrow">"Global Jobs"</p>
+                    <details class="context-panel">
+                        <summary>{move || format!("Global Jobs ({})", jobs.get().len())}</summary>
+                        <div class="context-panel-body">
                         <div class="job-list">
                             <For
                                 each=move || jobs.get()
@@ -776,7 +818,8 @@ pub fn App() -> impl IntoView {
                                 }
                             }}
                         </div>
-                    </div>
+                        </div>
+                    </details>
                 </section>
                 <section class="panel content">
                     {move || {
