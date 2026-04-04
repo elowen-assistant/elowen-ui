@@ -563,6 +563,26 @@ pub fn App() -> impl IntoView {
                     color: var(--muted);
                     font-size: 0.86rem;
                 }
+                .composer-eyebrow {
+                    margin-bottom: 6px;
+                }
+                .composer-header strong {
+                    display: block;
+                    color: var(--ink);
+                    font-size: 0.98rem;
+                    line-height: 1.35;
+                }
+                .composer-quick-actions {
+                    display: flex;
+                    flex-wrap: wrap;
+                    gap: 8px;
+                    align-items: flex-start;
+                    justify-content: flex-end;
+                }
+                .composer-quick-actions .thread-pill {
+                    padding: 6px 10px;
+                    font-size: 0.74rem;
+                }
                 .composer-actions {
                     display: flex;
                     justify-content: space-between;
@@ -570,23 +590,56 @@ pub fn App() -> impl IntoView {
                     gap: 10px;
                     flex-wrap: wrap;
                 }
-                .composer-actions .button-secondary {
-                    background: #8b6a42;
+                .composer-status {
+                    margin: 0;
+                    color: var(--muted);
+                    font-size: 0.84rem;
+                    max-width: 34rem;
                 }
                 .dispatch-fallback {
                     border: 1px solid var(--line);
                     border-radius: 16px;
-                    padding: 12px 14px;
                     background: rgba(244, 240, 232, 0.65);
+                    overflow: hidden;
                 }
                 .dispatch-fallback summary {
                     cursor: pointer;
                     font-weight: 700;
                     color: var(--ink);
+                    list-style: none;
+                    padding: 12px 14px;
                 }
-                .dispatch-fallback[open] {
+                .dispatch-fallback summary::-webkit-details-marker {
+                    display: none;
+                }
+                .dispatch-fallback[open] summary {
+                    border-bottom: 1px solid var(--line);
+                }
+                .composer-tools {
+                    padding: 12px 14px 14px 14px;
                     display: grid;
                     gap: 10px;
+                }
+                .dispatch-caption {
+                    margin: 0;
+                    color: var(--muted);
+                    font-size: 0.84rem;
+                    line-height: 1.45;
+                }
+                .dispatch-grid {
+                    display: grid;
+                    grid-template-columns: repeat(3, minmax(0, 1fr));
+                    gap: 10px;
+                }
+                .composer-dispatch-actions {
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    gap: 10px;
+                    flex-wrap: wrap;
+                }
+                .composer-dispatch-actions .button-secondary {
+                    background: #8b6a42;
                 }
                 .result-message {
                     border: 1px solid #b8d3c7;
@@ -658,8 +711,71 @@ pub fn App() -> impl IntoView {
                     background: rgba(255,255,255,0.6);
                 }
                 @media (max-width: 920px) {
-                    .frame { grid-template-columns: 1fr; }
+                    .app-shell { padding: 16px; }
+                    .frame { grid-template-columns: 1fr; gap: 16px; }
+                    .sidebar { order: 2; padding: 16px; }
+                    .content { order: 1; padding: 18px; }
+                    .thread-hero { padding: 16px; border-radius: 18px; }
                     .thread-hero h2 { font-size: 1.6rem; }
+                    .context-panel summary { padding: 12px 14px; }
+                    .context-panel-body { padding: 12px 14px 14px 14px; }
+                    .thread-composer {
+                        position: static;
+                        margin-top: 14px;
+                        padding: 14px;
+                        box-shadow: 0 10px 22px rgba(40, 34, 28, 0.06);
+                    }
+                    .dispatch-grid { grid-template-columns: 1fr; }
+                    .composer-actions,
+                    .composer-dispatch-actions,
+                    .composer-header {
+                        align-items: flex-start;
+                    }
+                    .composer-quick-actions {
+                        justify-content: flex-start;
+                    }
+                }
+                @media (max-width: 640px) {
+                    .app-shell { padding: 12px; }
+                    .panel { border-radius: 16px; }
+                    .sidebar,
+                    .content { padding: 14px; }
+                    .sidebar-header,
+                    .thread-focus,
+                    .thread-primary,
+                    .context-shell { gap: 12px; }
+                    .thread-hero { gap: 12px; }
+                    .thread-summary-row { gap: 8px; }
+                    .thread-pill {
+                        width: 100%;
+                        justify-content: flex-start;
+                    }
+                    .thread-card,
+                    .job-card,
+                    .message,
+                    .job-event,
+                    .job-detail,
+                    .approval-card,
+                    .report-grid article,
+                    .note-card {
+                        padding: 14px;
+                        border-radius: 16px;
+                    }
+                    .message-header,
+                    .thread-meta,
+                    .job-meta,
+                    .job-event header {
+                        flex-direction: column;
+                        align-items: flex-start;
+                        gap: 6px;
+                    }
+                    .thread-composer textarea {
+                        min-height: 96px;
+                    }
+                    .composer-actions > button,
+                    .composer-dispatch-actions > button {
+                        width: 100%;
+                    }
                 }
                 "#}
             </style>
@@ -1778,8 +1894,14 @@ pub fn App() -> impl IntoView {
                                         });
                                     }>
                                         <div class="composer-header">
-                                            <span>"Conversational Chat"</span>
-                                            <span>"Workflow #2 is the default. Use the dispatch controls below only when you want laptop execution."</span>
+                                            <div>
+                                                <p class="eyebrow composer-eyebrow">"Message Elowen"</p>
+                                                <strong>"Chat first. Reach for laptop execution only when the request needs real repo work."</strong>
+                                            </div>
+                                            <div class="composer-quick-actions">
+                                                <span class="thread-pill">"Default: conversational reply"</span>
+                                                <span class="thread-pill">"Fallback: run on laptop"</span>
+                                            </div>
                                         </div>
                                         <textarea
                                             placeholder="Send a message to Elowen"
@@ -1787,102 +1909,113 @@ pub fn App() -> impl IntoView {
                                             on:input=move |ev| set_new_message_content.set(event_target_value(&ev))
                                         />
                                         <details class="dispatch-fallback">
-                                            <summary>"Dispatch To Laptop (Workflow #1 Fallback)"</summary>
-                                            <div class="thread-meta">
-                                                <span>"Explicit dispatch only"</span>
-                                                <span>{format!("Primary device fallback is automatic when repo `{}` is allowed.", new_job_repo.get())}</span>
+                                            <summary>"More Actions"</summary>
+                                            <div class="composer-tools">
+                                                <p class="dispatch-caption">
+                                                    "Use this only when the current message should become a real laptop job. The message body above becomes the request text."
+                                                </p>
+                                                <div class="dispatch-grid">
+                                                    <input
+                                                        type="text"
+                                                        placeholder="Repository"
+                                                        prop:value=move || new_job_repo.get()
+                                                        on:input=move |ev| set_new_job_repo.set(event_target_value(&ev))
+                                                    />
+                                                    <input
+                                                        type="text"
+                                                        placeholder="Optional job title"
+                                                        prop:value=move || new_job_title.get()
+                                                        on:input=move |ev| set_new_job_title.set(event_target_value(&ev))
+                                                    />
+                                                    <input
+                                                        type="text"
+                                                        placeholder="Base branch"
+                                                        prop:value=move || new_job_base_branch.get()
+                                                        on:input=move |ev| set_new_job_base_branch.set(event_target_value(&ev))
+                                                    />
+                                                </div>
+                                                <div class="composer-dispatch-actions">
+                                                    <p class="composer-status">
+                                                        {move || format!("Repo `{}` will be used for the explicit Workflow #1 handoff.", new_job_repo.get())}
+                                                    </p>
+                                                    <button
+                                                        class="button-secondary"
+                                                        type="button"
+                                                        on:click={
+                                                            let message_thread_id = draft_dispatch_thread_id.clone();
+                                                            move |_| {
+                                                            let content = new_message_content.get_untracked().trim().to_string();
+                                                            let repo_name = new_job_repo.get_untracked().trim().to_string();
+                                                            let title = new_job_title.get_untracked().trim().to_string();
+                                                            let base_branch = new_job_base_branch.get_untracked().trim().to_string();
+                                                            if content.is_empty() {
+                                                                set_status_text.set("Message content is required.".to_string());
+                                                                return;
+                                                            }
+                                                            if repo_name.is_empty() {
+                                                                set_status_text.set("Repository is required for laptop dispatch.".to_string());
+                                                                return;
+                                                            }
+
+                                                            spawn_local({
+                                                                let set_new_message_content = set_new_message_content;
+                                                                let set_new_job_title = set_new_job_title;
+                                                                let set_selected_thread = set_selected_thread;
+                                                                let set_preferred_job_id = set_preferred_job_id;
+                                                                let set_selected_job_id = set_selected_job_id;
+                                                                let set_status_text = set_status_text;
+                                                                let set_threads = set_threads;
+                                                                let set_jobs = set_jobs;
+                                                                let selected_thread_id = selected_thread_id;
+                                                                let set_selected_thread_id = set_selected_thread_id;
+                                                                let thread_id = message_thread_id.clone();
+
+                                                                async move {
+                                                                    match dispatch_chat_message(&thread_id, &content, &title, &repo_name, &base_branch, None).await {
+                                                                        Ok(job) => {
+                                                                            set_new_message_content.set(String::new());
+                                                                            set_new_job_title.set(String::new());
+                                                                            set_preferred_job_id.set(Some(job.id.clone()));
+                                                                            set_selected_job_id.set(Some(job.id.clone()));
+                                                                            set_status_text.set(format!(
+                                                                                "Dispatched job {} from chat.",
+                                                                                job.short_id
+                                                                            ));
+                                                                            let _ = sync_selected_thread(
+                                                                                thread_id.clone(),
+                                                                                set_selected_thread,
+                                                                                set_status_text,
+                                                                            )
+                                                                            .await;
+                                                                            let _ = sync_thread_list(
+                                                                                set_threads,
+                                                                                selected_thread_id,
+                                                                                set_selected_thread_id,
+                                                                                set_status_text,
+                                                                            )
+                                                                            .await;
+                                                                            let _ = sync_job_list(set_jobs).await;
+                                                                        }
+                                                                        Err(error) => {
+                                                                            set_status_text
+                                                                                .set(format!("Failed to dispatch from chat: {error}"));
+                                                                        }
+                                                                    }
+                                                                }
+                                                            });
+                                                        }
+                                                        }
+                                                    >
+                                                        "Run On Laptop"
+                                                    </button>
+                                                </div>
                                             </div>
-                                            <input
-                                                type="text"
-                                                placeholder="Repository"
-                                                prop:value=move || new_job_repo.get()
-                                                on:input=move |ev| set_new_job_repo.set(event_target_value(&ev))
-                                            />
-                                            <input
-                                                type="text"
-                                                placeholder="Optional job title"
-                                                prop:value=move || new_job_title.get()
-                                                on:input=move |ev| set_new_job_title.set(event_target_value(&ev))
-                                            />
-                                            <input
-                                                type="text"
-                                                placeholder="Base branch"
-                                                prop:value=move || new_job_base_branch.get()
-                                                on:input=move |ev| set_new_job_base_branch.set(event_target_value(&ev))
-                                            />
                                         </details>
                                         <div class="composer-actions">
-                                            <button type="submit">"Send"</button>
-                                            <button
-                                                class="button-secondary"
-                                                type="button"
-                                                on:click={
-                                                    let message_thread_id = draft_dispatch_thread_id.clone();
-                                                    move |_| {
-                                                    let content = new_message_content.get_untracked().trim().to_string();
-                                                    let repo_name = new_job_repo.get_untracked().trim().to_string();
-                                                    let title = new_job_title.get_untracked().trim().to_string();
-                                                    let base_branch = new_job_base_branch.get_untracked().trim().to_string();
-                                                    if content.is_empty() {
-                                                        set_status_text.set("Message content is required.".to_string());
-                                                        return;
-                                                    }
-                                                    if repo_name.is_empty() {
-                                                        set_status_text.set("Repository is required for laptop dispatch.".to_string());
-                                                        return;
-                                                    }
-
-                                                    spawn_local({
-                                                        let set_new_message_content = set_new_message_content;
-                                                        let set_new_job_title = set_new_job_title;
-                                                        let set_selected_thread = set_selected_thread;
-                                                        let set_preferred_job_id = set_preferred_job_id;
-                                                        let set_selected_job_id = set_selected_job_id;
-                                                        let set_status_text = set_status_text;
-                                                        let set_threads = set_threads;
-                                                        let set_jobs = set_jobs;
-                                                        let selected_thread_id = selected_thread_id;
-                                                        let set_selected_thread_id = set_selected_thread_id;
-                                                        let thread_id = message_thread_id.clone();
-
-                                                        async move {
-                                                            match dispatch_chat_message(&thread_id, &content, &title, &repo_name, &base_branch, None).await {
-                                                                Ok(job) => {
-                                                                    set_new_message_content.set(String::new());
-                                                                    set_new_job_title.set(String::new());
-                                                                    set_preferred_job_id.set(Some(job.id.clone()));
-                                                                    set_selected_job_id.set(Some(job.id.clone()));
-                                                                    set_status_text.set(format!(
-                                                                        "Dispatched job {} from chat.",
-                                                                        job.short_id
-                                                                    ));
-                                                                    let _ = sync_selected_thread(
-                                                                        thread_id.clone(),
-                                                                        set_selected_thread,
-                                                                        set_status_text,
-                                                                    )
-                                                                    .await;
-                                                                    let _ = sync_thread_list(
-                                                                        set_threads,
-                                                                        selected_thread_id,
-                                                                        set_selected_thread_id,
-                                                                        set_status_text,
-                                                                    )
-                                                                    .await;
-                                                                    let _ = sync_job_list(set_jobs).await;
-                                                                }
-                                                                Err(error) => {
-                                                                    set_status_text
-                                                                        .set(format!("Failed to dispatch from chat: {error}"));
-                                                                }
-                                                            }
-                                                        }
-                                                    });
-                                                }
-                                                }
-                                            >
-                                                "Dispatch Draft To Laptop"
-                                            </button>
+                                            <p class="composer-status">
+                                                "Send a normal chat message here. If the conversation needs real execution, open More Actions and hand it off explicitly."
+                                            </p>
+                                            <button type="submit">"Send Message"</button>
                                         </div>
                                     </form>
                                     </div>
