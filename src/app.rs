@@ -171,22 +171,31 @@ pub fn App() -> impl IntoView {
             <style>
                 {r#"
                 :root {
-                    --bg: #f4f0e8;
-                    --panel: #fffaf2;
-                    --ink: #1f1b16;
-                    --muted: #6d665d;
-                    --line: #d8ccba;
-                    --accent: #1f5a4d;
-                    --accent-soft: #d9ebe5;
+                    --bg: #f6f3f8;
+                    --surface: #fff8fc;
+                    --surface-container: #f2ebf3;
+                    --surface-container-high: #ece3ee;
+                    --surface-container-low: #faf5fb;
+                    --primary: #4f5d92;
+                    --primary-container: #dde1ff;
+                    --secondary: #5f5b71;
+                    --secondary-container: #e6def9;
+                    --tertiary-container: #d2f2e2;
+                    --ink: #1d1b20;
+                    --muted: #645f69;
+                    --line: #cbc4d0;
+                    --outline-strong: #938f99;
+                    --accent: var(--primary);
+                    --accent-soft: var(--primary-container);
                 }
                 * { box-sizing: border-box; }
                 body {
                     margin: 0;
                     background:
-                        radial-gradient(circle at top left, rgba(31, 90, 77, 0.16), transparent 30%),
-                        linear-gradient(180deg, #efe8da 0%, var(--bg) 100%);
+                        radial-gradient(circle at top left, rgba(79, 93, 146, 0.18), transparent 28%),
+                        linear-gradient(180deg, #f3edf7 0%, var(--bg) 100%);
                     color: var(--ink);
-                    font-family: Georgia, 'Times New Roman', serif;
+                    font-family: "Segoe UI Variable Text", "Segoe UI", "Noto Sans", system-ui, sans-serif;
                     overflow-x: hidden;
                 }
                 .app-shell { min-height: 100vh; padding: 24px; overflow-x: hidden; }
@@ -200,10 +209,12 @@ pub fn App() -> impl IntoView {
                     position: relative;
                 }
                 .panel {
-                    background: rgba(255, 250, 242, 0.92);
+                    background: rgba(255, 248, 252, 0.94);
                     border: 1px solid var(--line);
-                    border-radius: 20px;
-                    box-shadow: 0 18px 40px rgba(40, 34, 28, 0.08);
+                    border-radius: 28px;
+                    box-shadow:
+                        0 2px 4px rgba(29, 27, 32, 0.08),
+                        0 16px 32px rgba(79, 93, 146, 0.08);
                     backdrop-filter: blur(10px);
                     min-width: 0;
                 }
@@ -226,9 +237,9 @@ pub fn App() -> impl IntoView {
                     display: grid;
                     gap: 6px;
                     padding: 12px 14px;
-                    border: 1px solid rgba(31, 90, 77, 0.08);
-                    border-radius: 16px;
-                    background: rgba(255, 255, 255, 0.72);
+                    border: 1px solid rgba(79, 93, 146, 0.08);
+                    border-radius: 20px;
+                    background: rgba(221, 225, 255, 0.48);
                 }
                 .sidebar-status .status {
                     margin: 0;
@@ -242,7 +253,7 @@ pub fn App() -> impl IntoView {
                     margin: 0 0 8px 0;
                 }
                 h1, h2, h3, p { margin-top: 0; }
-                h1 { font-size: 2.3rem; margin-bottom: 6px; }
+                h1 { font-size: 2.15rem; margin-bottom: 6px; font-weight: 700; letter-spacing: -0.02em; }
                 .status { color: var(--muted); font-size: 0.95rem; margin-bottom: 18px; }
                 .status-row {
                     display: flex;
@@ -255,46 +266,61 @@ pub fn App() -> impl IntoView {
                     display: inline-flex;
                     align-items: center;
                     border-radius: 999px;
-                    padding: 4px 10px;
+                    padding: 5px 11px;
                     font-size: 0.74rem;
                     font-weight: 700;
                     letter-spacing: 0.04em;
                     text-transform: uppercase;
-                    background: rgba(64, 55, 42, 0.08);
+                    background: rgba(95, 91, 113, 0.12);
                     color: var(--ink);
                 }
                 .status-badge.pending { background: #ece7df; color: #54483a; }
                 .status-badge.dispatched, .status-badge.accepted, .status-badge.running, .status-badge.pushing {
-                    background: #e1ebf7;
-                    color: #264d7a;
+                    background: #dde1ff;
+                    color: #2f4274;
                 }
-                .status-badge.awaiting_approval { background: #f4ead0; color: #72501f; }
+                .status-badge.awaiting_approval { background: #f3e1b7; color: #6a4d12; }
                 .status-badge.completed, .status-badge.approved, .status-badge.success {
-                    background: #dfeee5;
-                    color: #24543c;
+                    background: #d2f2e2;
+                    color: #21543d;
                 }
                 .status-badge.failed, .status-badge.rejected, .status-badge.failure {
-                    background: #f4ddd8;
+                    background: #f6d9d5;
                     color: #7a2f25;
                 }
                 form { display: grid; gap: 10px; }
                 input, textarea, button { font: inherit; }
                 input, textarea {
                     width: 100%;
-                    border: 1px solid var(--line);
-                    border-radius: 14px;
-                    padding: 12px 14px;
-                    background: #fff;
+                    border: 1px solid var(--outline-strong);
+                    border-radius: 18px;
+                    padding: 13px 15px;
+                    background: rgba(255, 248, 252, 0.96);
                     color: var(--ink);
+                    transition: border-color 0.16s ease, box-shadow 0.16s ease, background 0.16s ease;
+                }
+                input:focus, textarea:focus {
+                    outline: none;
+                    border-color: var(--primary);
+                    box-shadow: 0 0 0 3px rgba(79, 93, 146, 0.14);
+                    background: #fff;
                 }
                 textarea { min-height: 110px; resize: vertical; }
                 button {
                     border: none;
-                    border-radius: 999px;
-                    padding: 11px 16px;
+                    border-radius: 20px;
+                    padding: 11px 18px;
                     background: var(--accent);
                     color: white;
                     cursor: pointer;
+                    font-weight: 700;
+                    letter-spacing: 0.01em;
+                    box-shadow: 0 2px 6px rgba(79, 93, 146, 0.18);
+                    transition: transform 0.14s ease, box-shadow 0.14s ease, background 0.14s ease;
+                }
+                button:hover {
+                    transform: translateY(-1px);
+                    box-shadow: 0 5px 12px rgba(79, 93, 146, 0.22);
                 }
                 .sidebar-section { display: grid; gap: 12px; }
                 .sidebar-section + .sidebar-section { margin-top: 8px; }
@@ -304,17 +330,22 @@ pub fn App() -> impl IntoView {
                 }
                 .thread-card {
                     border: 1px solid var(--line);
-                    border-radius: 16px;
+                    border-radius: 22px;
                     padding: 14px 15px;
-                    background: rgba(255, 255, 255, 0.82);
+                    background: rgba(250, 245, 251, 0.9);
                     cursor: pointer;
                     display: grid;
                     gap: 8px;
                 }
-                .thread-card.active { border-color: var(--accent); background: var(--accent-soft); }
+                .thread-card.active {
+                    border-color: rgba(79, 93, 146, 0.3);
+                    background: rgba(221, 225, 255, 0.86);
+                    box-shadow: 0 6px 16px rgba(79, 93, 146, 0.12);
+                }
                 .thread-card h3 {
                     margin-bottom: 0;
                     font-size: 1rem;
+                    font-weight: 650;
                     line-height: 1.3;
                 }
                 .thread-card p {
@@ -333,9 +364,9 @@ pub fn App() -> impl IntoView {
                 .message-list, .job-list, .job-event-list { display: grid; gap: 12px; }
                 .job-card, .message, .job-event, .job-detail, .approval-card, .report-grid article, .note-card {
                     border: 1px solid var(--line);
-                    border-radius: 18px;
+                    border-radius: 24px;
                     padding: 16px;
-                    background: #fff;
+                    background: rgba(255, 248, 252, 0.96);
                 }
                 .job-card { cursor: pointer; }
                 .job-card.active { border-color: var(--accent); background: var(--accent-soft); }
@@ -413,7 +444,9 @@ pub fn App() -> impl IntoView {
                     margin-top: 12px;
                 }
                 .button-secondary {
-                    background: #8b6a42;
+                    background: var(--secondary-container);
+                    color: #2f2a3a;
+                    box-shadow: none;
                 }
                 .job-event pre {
                     margin: 0;
@@ -426,12 +459,12 @@ pub fn App() -> impl IntoView {
                     font-size: 0.82rem;
                 }
                 .message.user { background: #fcf3e8; }
-                .message.assistant { background: #eef6f3; }
-                .message.system { background: #f5f0fb; }
-                .message.mode-conversation { border-color: #7aa88b; }
-                .message.mode-draft-ready { box-shadow: inset 0 0 0 1px rgba(31, 90, 77, 0.12); }
-                .message.mode-handoff { border-color: #8b6a42; background: #fbf4e8; }
-                .message.mode-dispatch, .message.mode-job-update { border-color: #6c7ea6; }
+                .message.assistant { background: #f2f5ff; }
+                .message.system { background: #f4eff9; }
+                .message.mode-conversation { border-color: #7e8cc1; }
+                .message.mode-draft-ready { box-shadow: inset 0 0 0 1px rgba(79, 93, 146, 0.12); }
+                .message.mode-handoff { border-color: #9c7c44; background: #fbf5e7; }
+                .message.mode-dispatch, .message.mode-job-update { border-color: #7e8cc1; }
                 .thread-focus {
                     display: grid;
                     gap: 18px;
@@ -442,10 +475,10 @@ pub fn App() -> impl IntoView {
                     gap: 14px;
                     padding: 18px 20px;
                     border: 1px solid var(--line);
-                    border-radius: 22px;
+                    border-radius: 28px;
                     background:
-                        linear-gradient(145deg, rgba(31, 90, 77, 0.09), rgba(255, 255, 255, 0.82)),
-                        rgba(255, 255, 255, 0.9);
+                        linear-gradient(145deg, rgba(221, 225, 255, 0.88), rgba(255, 248, 252, 0.96)),
+                        rgba(255, 255, 255, 0.92);
                 }
                 .thread-hero-header {
                     display: flex;
@@ -469,10 +502,10 @@ pub fn App() -> impl IntoView {
                     gap: 8px;
                     border-radius: 999px;
                     padding: 8px 12px;
-                    background: rgba(255, 255, 255, 0.86);
+                    background: rgba(255, 248, 252, 0.92);
                     color: var(--muted);
                     font-size: 0.82rem;
-                    border: 1px solid rgba(31, 90, 77, 0.08);
+                    border: 1px solid rgba(79, 93, 146, 0.08);
                 }
                 .thread-primary {
                     display: grid;
@@ -493,8 +526,8 @@ pub fn App() -> impl IntoView {
                 }
                 .context-panel {
                     border: 1px solid var(--line);
-                    border-radius: 18px;
-                    background: rgba(255, 255, 255, 0.76);
+                    border-radius: 24px;
+                    background: rgba(250, 245, 251, 0.84);
                     overflow: hidden;
                 }
                 .context-panel summary {
@@ -503,7 +536,7 @@ pub fn App() -> impl IntoView {
                     padding: 14px 16px;
                     font-weight: 700;
                     color: var(--ink);
-                    background: rgba(244, 240, 232, 0.76);
+                    background: rgba(236, 227, 238, 0.78);
                 }
                 .context-panel summary::-webkit-details-marker {
                     display: none;
@@ -538,20 +571,20 @@ pub fn App() -> impl IntoView {
                     font-weight: 700;
                     letter-spacing: 0.04em;
                     text-transform: uppercase;
-                    background: rgba(64, 55, 42, 0.08);
+                    background: rgba(95, 91, 113, 0.12);
                     color: var(--ink);
                 }
-                .mode-badge.conversation { background: #dfeee5; color: #24543c; }
+                .mode-badge.conversation { background: #dde1ff; color: #33457a; }
                 .mode-badge.handoff { background: #f1e2c8; color: #6e4a1d; }
-                .mode-badge.dispatch { background: #e3e8f5; color: #334e82; }
-                .mode-badge.job-update { background: #dde7f7; color: #2f4b7f; }
+                .mode-badge.dispatch { background: #d6e3ff; color: #2f4b7f; }
+                .mode-badge.job-update { background: #e6def9; color: #4b4166; }
                 .mode-badge.system { background: #efe7fb; color: #5d3e84; }
                 .message-body { white-space: pre-wrap; }
                 .message-details {
                     margin-top: 12px;
                     border: 1px solid #d8dfeb;
-                    border-radius: 14px;
-                    background: rgba(255, 255, 255, 0.72);
+                    border-radius: 18px;
+                    background: rgba(255, 248, 252, 0.78);
                     overflow: hidden;
                 }
                 .message-details summary {
@@ -581,13 +614,15 @@ pub fn App() -> impl IntoView {
                     margin-top: 0;
                     padding: 16px;
                     border: 1px solid var(--line);
-                    border-radius: 18px;
-                    background: rgba(255, 255, 255, 0.86);
+                    border-radius: 24px;
+                    background: rgba(255, 248, 252, 0.96);
                     display: grid;
                     gap: 12px;
                     position: sticky;
                     bottom: 18px;
-                    box-shadow: 0 14px 30px rgba(40, 34, 28, 0.08);
+                    box-shadow:
+                        0 2px 6px rgba(29, 27, 32, 0.1),
+                        0 18px 36px rgba(79, 93, 146, 0.12);
                     z-index: 2;
                 }
                 .composer-header {
@@ -633,8 +668,8 @@ pub fn App() -> impl IntoView {
                 }
                 .dispatch-fallback {
                     border: 1px solid var(--line);
-                    border-radius: 16px;
-                    background: rgba(244, 240, 232, 0.65);
+                    border-radius: 20px;
+                    background: rgba(236, 227, 238, 0.7);
                     overflow: hidden;
                 }
                 .dispatch-fallback summary {
@@ -794,19 +829,19 @@ pub fn App() -> impl IntoView {
                         justify-content: flex-start;
                         margin-bottom: 12px;
                     }
-                    .sidebar-toggle,
-                    .sidebar-close {
+                .sidebar-toggle,
+                .sidebar-close {
                         display: inline-flex;
                         align-items: center;
                         justify-content: center;
-                        border-radius: 999px;
+                        border-radius: 18px;
                         border: 1px solid var(--line);
-                        background: rgba(255, 255, 255, 0.92);
+                        background: rgba(255, 248, 252, 0.96);
                         color: var(--ink);
                         padding: 9px 14px;
                         font-size: 0.84rem;
                         font-weight: 700;
-                        box-shadow: 0 10px 24px rgba(40, 34, 28, 0.08);
+                        box-shadow: 0 8px 18px rgba(79, 93, 146, 0.1);
                     }
                     .sidebar-header {
                         grid-template-columns: 1fr auto;
