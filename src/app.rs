@@ -3,8 +3,9 @@ use leptos::{ev, html, prelude::*, task::spawn_local};
 
 use crate::{
     api::{
-        create_job, create_thread, dispatch_chat_message, dispatch_thread_message, fetch_job,
-        fetch_jobs, fetch_thread, fetch_threads, promote_job_note, resolve_approval,
+        create_job, create_thread, dispatch_chat_message, dispatch_thread_message,
+        fetch_auth_session, fetch_job, fetch_jobs, fetch_thread, fetch_threads,
+        login as login_session, logout as logout_session, promote_job_note, resolve_approval,
         send_thread_chat_message,
     },
     format::{
@@ -21,6 +22,9 @@ pub fn App() -> impl IntoView {
     let (threads, set_threads) = signal(Vec::<ThreadSummary>::new());
     let (jobs, set_jobs) = signal(Vec::<JobRecord>::new());
     let (sidebar_open, set_sidebar_open) = signal(!is_compact_layout());
+    let (auth_session, set_auth_session) = signal(None::<AuthSessionStatus>);
+    let (auth_password, set_auth_password) = signal(String::new());
+    let (auth_error, set_auth_error) = signal(String::new());
     let (selected_thread_id, set_selected_thread_id) = signal(None::<String>);
     let (selected_thread, set_selected_thread) = signal(None::<ThreadDetail>);
     let (preferred_job_id, set_preferred_job_id) = signal(None::<String>);
@@ -36,30 +40,53 @@ pub fn App() -> impl IntoView {
     let message_pane_ref = NodeRef::<html::Div>::new();
 
     spawn_local(async move {
-        if let Err(error) = sync_thread_list(
-            set_threads,
-            selected_thread_id,
-            set_selected_thread_id,
-            set_status_text,
-        )
-        .await
-        {
-            set_status_text.set(format!("Failed to load threads: {error}"));
-        }
+        match fetch_auth_session().await {
+            Ok(session) => {
+                let can_access = !session.enabled || session.authenticated;
+                set_auth_session.set(Some(session));
+                if can_access {
+                    if let Err(error) = sync_thread_list(
+                        set_threads,
+                        selected_thread_id,
+                        set_selected_thread_id,
+                        set_status_text,
+                    )
+                    .await
+                    {
+                        set_status_text.set(format!("Failed to load threads: {error}"));
+                    }
 
-        if let Err(error) = sync_job_list(set_jobs).await {
-            set_status_text.set(format!("Failed to load jobs: {error}"));
-        }
+                    if let Err(error) = sync_job_list(set_jobs).await {
+                        set_status_text.set(format!("Failed to load jobs: {error}"));
+                    }
 
-        if let Some(thread_id) = selected_thread_id.get_untracked()
-            && let Err(error) =
-                sync_selected_thread(thread_id, set_selected_thread, set_status_text).await
-        {
-            set_status_text.set(format!("Failed to load thread: {error}"));
+                    if let Some(thread_id) = selected_thread_id.get_untracked()
+                        && let Err(error) =
+                            sync_selected_thread(thread_id, set_selected_thread, set_status_text)
+                                .await
+                    {
+                        set_status_text.set(format!("Failed to load thread: {error}"));
+                    }
+                } else {
+                    set_status_text.set("Sign in required.".to_string());
+                }
+            }
+            Err(error) => {
+                set_status_text.set(format!("Failed to check auth session: {error}"));
+            }
         }
 
         loop {
             TimeoutFuture::new(5_000).await;
+
+            let can_access = auth_session
+                .get_untracked()
+                .map(|session| !session.enabled || session.authenticated)
+                .unwrap_or(false);
+
+            if !can_access {
+                continue;
+            }
 
             if let Err(error) = sync_thread_list(
                 set_threads,
@@ -69,10 +96,34 @@ pub fn App() -> impl IntoView {
             )
             .await
             {
+                if is_auth_error(&error) {
+                    set_auth_session.set(Some(AuthSessionStatus {
+                        enabled: true,
+                        authenticated: false,
+                        operator_label: None,
+                    }));
+                    set_selected_thread.set(None);
+                    set_selected_job_detail.set(None);
+                    set_selected_job_id.set(None);
+                    set_status_text.set("Session expired. Sign in again.".to_string());
+                    continue;
+                }
                 set_status_text.set(format!("Failed to poll threads: {error}"));
             }
 
             if let Err(error) = sync_job_list(set_jobs).await {
+                if is_auth_error(&error) {
+                    set_auth_session.set(Some(AuthSessionStatus {
+                        enabled: true,
+                        authenticated: false,
+                        operator_label: None,
+                    }));
+                    set_selected_thread.set(None);
+                    set_selected_job_detail.set(None);
+                    set_selected_job_id.set(None);
+                    set_status_text.set("Session expired. Sign in again.".to_string());
+                    continue;
+                }
                 set_status_text.set(format!("Failed to poll jobs: {error}"));
             }
 
@@ -80,6 +131,18 @@ pub fn App() -> impl IntoView {
                 && let Err(error) =
                     sync_selected_thread(thread_id, set_selected_thread, set_status_text).await
             {
+                if is_auth_error(&error) {
+                    set_auth_session.set(Some(AuthSessionStatus {
+                        enabled: true,
+                        authenticated: false,
+                        operator_label: None,
+                    }));
+                    set_selected_thread.set(None);
+                    set_selected_job_detail.set(None);
+                    set_selected_job_id.set(None);
+                    set_status_text.set("Session expired. Sign in again.".to_string());
+                    continue;
+                }
                 set_status_text.set(format!("Failed to refresh thread: {error}"));
             }
 
@@ -87,6 +150,18 @@ pub fn App() -> impl IntoView {
                 && let Err(error) =
                     sync_selected_job(job_id, set_selected_job_detail, set_status_text).await
             {
+                if is_auth_error(&error) {
+                    set_auth_session.set(Some(AuthSessionStatus {
+                        enabled: true,
+                        authenticated: false,
+                        operator_label: None,
+                    }));
+                    set_selected_thread.set(None);
+                    set_selected_job_detail.set(None);
+                    set_selected_job_id.set(None);
+                    set_status_text.set("Session expired. Sign in again.".to_string());
+                    continue;
+                }
                 set_status_text.set(format!("Failed to refresh job: {error}"));
             }
         }
@@ -228,6 +303,40 @@ pub fn App() -> impl IntoView {
                 .content { padding: 24px; min-height: 70vh; min-width: 0; overflow-x: hidden; }
                 .content-toolbar {
                     display: none;
+                }
+                .auth-shell {
+                    min-height: calc(100vh - 48px);
+                    display: grid;
+                    place-items: center;
+                }
+                .auth-card {
+                    width: min(460px, 100%);
+                    padding: 28px;
+                    border: 1px solid var(--line);
+                    border-radius: 28px;
+                    background: rgba(255, 248, 252, 0.96);
+                    box-shadow:
+                        0 2px 6px rgba(29, 27, 32, 0.1),
+                        0 18px 36px rgba(79, 93, 146, 0.12);
+                    display: grid;
+                    gap: 16px;
+                }
+                .auth-actions {
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    gap: 12px;
+                    flex-wrap: wrap;
+                }
+                .auth-error {
+                    margin: 0;
+                    color: #8a2e2e;
+                    font-size: 0.9rem;
+                }
+                .logout-button {
+                    background: var(--secondary-container);
+                    color: #2f2a3a;
+                    box-shadow: none;
                 }
                 .sidebar-header {
                     display: grid;
@@ -918,6 +1027,110 @@ pub fn App() -> impl IntoView {
                 }
                 "#}
             </style>
+            {move || {
+                match auth_session.get() {
+                    None => view! {
+                        <div class="auth-shell">
+                            <section class="auth-card">
+                                <div>
+                                    <p class="eyebrow">"Elowen Workspace"</p>
+                                    <h1>"Checking session"</h1>
+                                    <p class="status">"Loading authentication state before the workspace UI appears."</p>
+                                </div>
+                            </section>
+                        </div>
+                    }.into_any(),
+                    Some(session) if session.enabled && !session.authenticated => view! {
+                        <div class="auth-shell">
+                            <section class="auth-card">
+                                <div>
+                                    <p class="eyebrow">"Elowen Sign In"</p>
+                                    <h1>"Protected workspace"</h1>
+                                    <p class="status">"Sign in to browse threads, dispatch jobs, review notes, and approve pushes."</p>
+                                </div>
+                                <form on:submit=move |ev: ev::SubmitEvent| {
+                                    ev.prevent_default();
+                                    let password = auth_password.get_untracked().trim().to_string();
+                                    if password.is_empty() {
+                                        set_auth_error.set("Password is required.".to_string());
+                                        return;
+                                    }
+
+                                    spawn_local({
+                                        let set_auth_session = set_auth_session;
+                                        let set_auth_error = set_auth_error;
+                                        let set_auth_password = set_auth_password;
+                                        let set_status_text = set_status_text;
+                                        let set_threads = set_threads;
+                                        let selected_thread_id = selected_thread_id;
+                                        let set_selected_thread_id = set_selected_thread_id;
+                                        let set_selected_thread = set_selected_thread;
+                                        let set_jobs = set_jobs;
+
+                                        async move {
+                                            match login_session(&password).await {
+                                                Ok(session) => {
+                                                    set_auth_error.set(String::new());
+                                                    set_auth_password.set(String::new());
+                                                    set_auth_session.set(Some(session));
+                                                    set_status_text.set("Signed in.".to_string());
+
+                                                    if let Err(error) = sync_thread_list(
+                                                        set_threads,
+                                                        selected_thread_id,
+                                                        set_selected_thread_id,
+                                                        set_status_text,
+                                                    )
+                                                    .await
+                                                    {
+                                                        set_status_text.set(format!("Failed to load threads: {error}"));
+                                                    }
+
+                                                    if let Err(error) = sync_job_list(set_jobs).await {
+                                                        set_status_text.set(format!("Failed to load jobs: {error}"));
+                                                    }
+
+                                                    if let Some(thread_id) = selected_thread_id.get_untracked()
+                                                        && let Err(error) = sync_selected_thread(
+                                                            thread_id,
+                                                            set_selected_thread,
+                                                            set_status_text,
+                                                        )
+                                                        .await
+                                                    {
+                                                        set_status_text.set(format!("Failed to load thread: {error}"));
+                                                    }
+                                                }
+                                                Err(error) => {
+                                                    set_auth_error.set(error);
+                                                }
+                                            }
+                                        }
+                                    });
+                                }>
+                                    <input
+                                        type="password"
+                                        placeholder="Workspace password"
+                                        prop:value=move || auth_password.get()
+                                        on:input=move |ev| set_auth_password.set(event_target_value(&ev))
+                                    />
+                                    {move || {
+                                        let error = auth_error.get();
+                                        if error.is_empty() {
+                                            ().into_any()
+                                        } else {
+                                            view! { <p class="auth-error">{error}</p> }.into_any()
+                                        }
+                                    }}
+                                    <div class="auth-actions">
+                                        <p class="status">"Authentication is enabled for this deployment."</p>
+                                        <button type="submit">"Sign In"</button>
+                                    </div>
+                                </form>
+                            </section>
+                        </div>
+                    }.into_any(),
+                    Some(_) => view! {
             <div class="frame">
                 <button
                     type="button"
@@ -935,6 +1148,51 @@ pub fn App() -> impl IntoView {
                         <div class="sidebar-status">
                             <p class="eyebrow">"Workspace Status"</p>
                             <p class="status">{move || status_text.get()}</p>
+                            {move || {
+                                match auth_session.get().and_then(|session| session.operator_label) {
+                                    Some(operator_label) => view! {
+                                        <>
+                                            <p class="status">{format!("Signed in as {operator_label}")}</p>
+                                            <button
+                                                type="button"
+                                                class="logout-button"
+                                                on:click=move |_| {
+                                                    spawn_local({
+                                                        let set_auth_session = set_auth_session;
+                                                        let set_status_text = set_status_text;
+                                                        let set_selected_thread = set_selected_thread;
+                                                        let set_selected_thread_id = set_selected_thread_id;
+                                                        let set_selected_job_detail = set_selected_job_detail;
+                                                        let set_selected_job_id = set_selected_job_id;
+                                                        let set_threads = set_threads;
+                                                        let set_jobs = set_jobs;
+                                                        async move {
+                                                            match logout_session().await {
+                                                                Ok(session) => {
+                                                                    set_auth_session.set(Some(session));
+                                                                    set_status_text.set("Signed out.".to_string());
+                                                                    set_selected_thread.set(None);
+                                                                    set_selected_thread_id.set(None);
+                                                                    set_selected_job_detail.set(None);
+                                                                    set_selected_job_id.set(None);
+                                                                    set_threads.set(Vec::new());
+                                                                    set_jobs.set(Vec::new());
+                                                                }
+                                                                Err(error) => {
+                                                                    set_status_text.set(format!("Failed to sign out: {error}"));
+                                                                }
+                                                            }
+                                                        }
+                                                    });
+                                                }
+                                            >
+                                                "Sign Out"
+                                            </button>
+                                        </>
+                                    }.into_any(),
+                                    None => ().into_any(),
+                                }
+                            }}
                         </div>
                         <button
                             type="button"
@@ -2210,6 +2468,9 @@ pub fn App() -> impl IntoView {
                     }}
                 </section>
             </div>
+                    }.into_any(),
+                }
+            }}
         </main>
     }
 }
@@ -2276,4 +2537,8 @@ fn is_compact_layout() -> bool {
         .and_then(|width| width.as_f64())
         .map(|width| width <= 920.0)
         .unwrap_or(false)
+}
+
+fn is_auth_error(error: &str) -> bool {
+    error.contains("sign in required") || error.contains("status 401")
 }

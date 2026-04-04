@@ -218,3 +218,15 @@ pub(crate) struct PromoteJobNoteRequest {
     pub(crate) aliases: Vec<String>,
     pub(crate) note_type: Option<String>,
 }
+
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+pub(crate) struct AuthSessionStatus {
+    pub(crate) enabled: bool,
+    pub(crate) authenticated: bool,
+    pub(crate) operator_label: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct LoginRequest {
+    pub(crate) password: String,
+}
