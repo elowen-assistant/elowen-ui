@@ -964,7 +964,7 @@ pub fn App() -> impl IntoView {
                                             let summary = job_detail.summary.clone();
                                             let approval_thread_id = thread_id.clone();
                                             view! {
-                                                <details class="context-panel" open>
+                                                <details class="context-panel">
                                                     <summary>"Selected Job"</summary>
                                                     <div class="context-panel-body">
                                                 <section class="job-detail">
