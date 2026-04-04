@@ -1,5 +1,5 @@
 use gloo_timers::future::TimeoutFuture;
-use leptos::{ev, prelude::*, task::spawn_local};
+use leptos::{ev, html, prelude::*, task::spawn_local};
 
 use crate::{
     api::{
@@ -20,6 +20,7 @@ use crate::{
 pub fn App() -> impl IntoView {
     let (threads, set_threads) = signal(Vec::<ThreadSummary>::new());
     let (jobs, set_jobs) = signal(Vec::<JobRecord>::new());
+    let (sidebar_open, set_sidebar_open) = signal(!is_compact_layout());
     let (selected_thread_id, set_selected_thread_id) = signal(None::<String>);
     let (selected_thread, set_selected_thread) = signal(None::<ThreadDetail>);
     let (preferred_job_id, set_preferred_job_id) = signal(None::<String>);
@@ -32,6 +33,7 @@ pub fn App() -> impl IntoView {
     let (new_job_base_branch, set_new_job_base_branch) = signal(String::from("main"));
     let (new_job_request_text, set_new_job_request_text) = signal(String::new());
     let (status_text, set_status_text) = signal(String::from("Loading threads and jobs..."));
+    let message_pane_ref = NodeRef::<html::Div>::new();
 
     spawn_local(async move {
         if let Err(error) = sync_thread_list(
@@ -152,6 +154,18 @@ pub fn App() -> impl IntoView {
         }
     });
 
+    Effect::new(move |_| {
+        let _ = selected_thread_id.get();
+        let _message_count = selected_thread
+            .get()
+            .map(|thread| thread.messages.len())
+            .unwrap_or_default();
+
+        if let Some(message_pane) = message_pane_ref.get() {
+            message_pane.set_scroll_top(message_pane.scroll_height());
+        }
+    });
+
     view! {
         <main class="app-shell">
             <style>
@@ -183,6 +197,7 @@ pub fn App() -> impl IntoView {
                     max-width: 1280px;
                     margin: 0 auto;
                     align-items: start;
+                    position: relative;
                 }
                 .panel {
                     background: rgba(255, 250, 242, 0.92);
@@ -192,8 +207,17 @@ pub fn App() -> impl IntoView {
                     backdrop-filter: blur(10px);
                     min-width: 0;
                 }
+                .sidebar-shell { min-width: 0; }
+                .sidebar-backdrop,
+                .sidebar-toggle,
+                .sidebar-close {
+                    display: none;
+                }
                 .sidebar { padding: 18px; display: flex; flex-direction: column; gap: 16px; }
                 .content { padding: 24px; min-height: 70vh; min-width: 0; overflow-x: hidden; }
+                .content-toolbar {
+                    display: none;
+                }
                 .sidebar-header {
                     display: grid;
                     gap: 10px;
@@ -411,6 +435,7 @@ pub fn App() -> impl IntoView {
                 .thread-focus {
                     display: grid;
                     gap: 18px;
+                    min-height: 0;
                 }
                 .thread-hero {
                     display: grid;
@@ -451,7 +476,16 @@ pub fn App() -> impl IntoView {
                 }
                 .thread-primary {
                     display: grid;
-                    gap: 16px;
+                    gap: 12px;
+                    min-height: min(72vh, calc(100vh - 280px));
+                    grid-template-rows: minmax(0, 1fr) auto;
+                }
+                .message-pane {
+                    min-height: 0;
+                    max-height: min(68vh, calc(100vh - 320px));
+                    overflow-y: auto;
+                    padding: 4px 6px 120px 0;
+                    scroll-behavior: smooth;
                 }
                 .context-shell {
                     display: grid;
@@ -544,7 +578,7 @@ pub fn App() -> impl IntoView {
                     color: #3f4c65;
                 }
                 .thread-composer {
-                    margin-top: 18px;
+                    margin-top: 0;
                     padding: 16px;
                     border: 1px solid var(--line);
                     border-radius: 18px;
@@ -554,6 +588,7 @@ pub fn App() -> impl IntoView {
                     position: sticky;
                     bottom: 18px;
                     box-shadow: 0 14px 30px rgba(40, 34, 28, 0.08);
+                    z-index: 2;
                 }
                 .composer-header {
                     display: flex;
@@ -712,18 +747,84 @@ pub fn App() -> impl IntoView {
                 }
                 @media (max-width: 920px) {
                     .app-shell { padding: 16px; }
-                    .frame { grid-template-columns: 1fr; gap: 16px; }
-                    .sidebar { order: 2; padding: 16px; }
-                    .content { order: 1; padding: 18px; }
+                    .frame { display: block; }
+                    .sidebar-backdrop {
+                        display: block;
+                        position: fixed;
+                        inset: 0;
+                        background: rgba(23, 19, 15, 0.34);
+                        opacity: 0;
+                        pointer-events: none;
+                        transition: opacity 0.18s ease;
+                        z-index: 20;
+                    }
+                    .sidebar-backdrop.open {
+                        opacity: 1;
+                        pointer-events: auto;
+                    }
+                    .sidebar-shell {
+                        position: fixed;
+                        left: 12px;
+                        top: 12px;
+                        bottom: 12px;
+                        width: min(360px, calc(100vw - 40px));
+                        z-index: 30;
+                        transform: translateX(-115%);
+                        opacity: 0;
+                        pointer-events: none;
+                        transition: transform 0.22s ease, opacity 0.22s ease;
+                    }
+                    .sidebar-shell.open {
+                        transform: translateX(0);
+                        opacity: 1;
+                        pointer-events: auto;
+                    }
+                    .sidebar {
+                        order: 2;
+                        padding: 16px;
+                        height: 100%;
+                        overflow-y: auto;
+                    }
+                    .content {
+                        order: 1;
+                        padding: 18px;
+                    }
+                    .content-toolbar {
+                        display: flex;
+                        justify-content: flex-start;
+                        margin-bottom: 12px;
+                    }
+                    .sidebar-toggle,
+                    .sidebar-close {
+                        display: inline-flex;
+                        align-items: center;
+                        justify-content: center;
+                        border-radius: 999px;
+                        border: 1px solid var(--line);
+                        background: rgba(255, 255, 255, 0.92);
+                        color: var(--ink);
+                        padding: 9px 14px;
+                        font-size: 0.84rem;
+                        font-weight: 700;
+                        box-shadow: 0 10px 24px rgba(40, 34, 28, 0.08);
+                    }
+                    .sidebar-header {
+                        grid-template-columns: 1fr auto;
+                        align-items: start;
+                    }
                     .thread-hero { padding: 16px; border-radius: 18px; }
                     .thread-hero h2 { font-size: 1.6rem; }
                     .context-panel summary { padding: 12px 14px; }
                     .context-panel-body { padding: 12px 14px 14px 14px; }
                     .thread-composer {
-                        position: static;
                         margin-top: 14px;
                         padding: 14px;
-                        box-shadow: 0 10px 22px rgba(40, 34, 28, 0.06);
+                        bottom: 12px;
+                        box-shadow: 0 10px 22px rgba(40, 34, 28, 0.08);
+                    }
+                    .message-pane {
+                        max-height: calc(100vh - 300px);
+                        padding-bottom: 112px;
                     }
                     .dispatch-grid { grid-template-columns: 1fr; }
                     .composer-actions,
@@ -738,7 +839,6 @@ pub fn App() -> impl IntoView {
                 @media (max-width: 640px) {
                     .app-shell { padding: 12px; }
                     .panel { border-radius: 16px; }
-                    .sidebar,
                     .content { padding: 14px; }
                     .sidebar-header,
                     .thread-focus,
@@ -770,7 +870,11 @@ pub fn App() -> impl IntoView {
                         gap: 6px;
                     }
                     .thread-composer textarea {
-                        min-height: 96px;
+                        min-height: 80px;
+                    }
+                    .message-pane {
+                        max-height: calc(100vh - 250px);
+                        padding-bottom: 104px;
                     }
                     .composer-actions > button,
                     .composer-dispatch-actions > button {
@@ -780,6 +884,13 @@ pub fn App() -> impl IntoView {
                 "#}
             </style>
             <div class="frame">
+                <button
+                    type="button"
+                    class="sidebar-backdrop"
+                    class:open=move || sidebar_open.get()
+                    on:click=move |_| set_sidebar_open.set(false)
+                ></button>
+                <div class="sidebar-shell" class:open=move || sidebar_open.get()>
                 <section class="panel sidebar">
                     <div class="sidebar-header">
                         <div>
@@ -790,6 +901,13 @@ pub fn App() -> impl IntoView {
                             <p class="eyebrow">"Workspace Status"</p>
                             <p class="status">{move || status_text.get()}</p>
                         </div>
+                        <button
+                            type="button"
+                            class="sidebar-close"
+                            on:click=move |_| set_sidebar_open.set(false)
+                        >
+                            "Close"
+                        </button>
                     </div>
                     <details class="context-panel">
                         <summary>"New Thread"</summary>
@@ -806,6 +924,7 @@ pub fn App() -> impl IntoView {
                             let set_new_thread_title = set_new_thread_title;
                             let set_selected_thread = set_selected_thread;
                             let set_selected_thread_id = set_selected_thread_id;
+                            let set_sidebar_open = set_sidebar_open;
                             let set_status_text = set_status_text;
                             let set_threads = set_threads;
                             let selected_thread_id = selected_thread_id;
@@ -817,6 +936,9 @@ pub fn App() -> impl IntoView {
                                         set_new_thread_title.set(String::new());
                                         set_selected_thread.set(Some(thread));
                                         set_selected_thread_id.set(Some(thread_id));
+                                        if is_compact_layout() {
+                                            set_sidebar_open.set(false);
+                                        }
                                         set_status_text.set("Thread created.".to_string());
                                         let _ = sync_thread_list(
                                             set_threads,
@@ -858,7 +980,12 @@ pub fn App() -> impl IntoView {
                                         <article
                                             class=("thread-card", true)
                                             class:active=move || selected_thread_id.get() == Some(active_thread_id.clone())
-                                            on:click=move |_| set_selected_thread_id.set(Some(click_thread_id.clone()))
+                                            on:click=move |_| {
+                                                set_selected_thread_id.set(Some(click_thread_id.clone()));
+                                                if is_compact_layout() {
+                                                    set_sidebar_open.set(false);
+                                                }
+                                            }
                                         >
                                             <h3>{thread.title.clone()}</h3>
                                             <p>{format!("{} messages", thread.message_count)}</p>
@@ -897,6 +1024,9 @@ pub fn App() -> impl IntoView {
                                                 set_preferred_job_id.set(Some(click_job_id.clone()));
                                                 set_selected_job_id.set(Some(click_job_id.clone()));
                                                 set_selected_thread_id.set(Some(click_thread_id.clone()));
+                                                if is_compact_layout() {
+                                                    set_sidebar_open.set(false);
+                                                }
                                             }
                                         >
                                             <header>
@@ -937,7 +1067,17 @@ pub fn App() -> impl IntoView {
                         </div>
                     </details>
                 </section>
+                </div>
                 <section class="panel content">
+                    <div class="content-toolbar">
+                        <button
+                            type="button"
+                            class="sidebar-toggle"
+                            on:click=move |_| set_sidebar_open.update(|open| *open = !*open)
+                        >
+                            {move || if sidebar_open.get() { "Hide Threads" } else { "Show Threads" }}
+                        </button>
+                    </div>
                     {move || {
                         if let Some(thread) = selected_thread.get() {
                             let thread_id = thread.thread.id.clone();
@@ -1549,6 +1689,7 @@ pub fn App() -> impl IntoView {
                                     </div>
 
                                     <div class="thread-primary">
+                                    <div class="message-pane" node_ref=message_pane_ref>
                                     <div class="message-list">
                                         <For
                                             each=move || messages.clone()
@@ -1849,6 +1990,7 @@ pub fn App() -> impl IntoView {
                                             }
                                         />
                                     </div>
+                                    </div>
                                     <form class="thread-composer" on:submit=move |ev: ev::SubmitEvent| {
                                         ev.prevent_default();
                                         let content = new_message_content.get_untracked().trim().to_string();
@@ -2091,4 +2233,12 @@ async fn sync_selected_job(
     set_selected_job_detail.set(Some(job));
     set_status_text.set("Job detail loaded.".to_string());
     Ok(())
+}
+
+fn is_compact_layout() -> bool {
+    web_sys::window()
+        .and_then(|window| window.inner_width().ok())
+        .and_then(|width| width.as_f64())
+        .map(|width| width <= 920.0)
+        .unwrap_or(false)
 }
