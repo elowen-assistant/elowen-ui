@@ -302,7 +302,7 @@ pub fn App() -> impl IntoView {
                     align-items: center;
                     justify-content: space-between;
                     gap: 16px;
-                    padding: 16px 20px;
+                    padding: 14px 18px;
                     border-radius: var(--shape-xl);
                     min-width: 0;
                 }
@@ -359,7 +359,7 @@ pub fn App() -> impl IntoView {
                 .frame {
                     display: grid;
                     grid-template-columns: 308px 1fr;
-                    gap: 20px;
+                    gap: 18px;
                     align-items: start;
                     position: relative;
                 }
@@ -378,7 +378,7 @@ pub fn App() -> impl IntoView {
                     display: none;
                 }
                 .sidebar { padding: 18px; display: flex; flex-direction: column; gap: 16px; }
-                .content { padding: 24px; min-height: 70vh; min-width: 0; overflow-x: hidden; background: color-mix(in srgb, var(--surface-container-lowest) 76%, transparent); }
+                .content { padding: 20px; min-height: 70vh; min-width: 0; overflow-x: hidden; background: color-mix(in srgb, var(--surface-container-lowest) 76%, transparent); }
                 .content-toolbar { display: none; }
                 .auth-shell {
                     min-height: calc(100vh - 48px);
@@ -650,17 +650,25 @@ pub fn App() -> impl IntoView {
                 .message.mode-draft-ready { box-shadow: inset 0 0 0 1px rgba(79, 93, 146, 0.12); }
                 .message.mode-handoff { border-color: #9c7c44; background: #fbf5e7; }
                 .message.mode-dispatch, .message.mode-job-update { border-color: #7e8cc1; }
+                .message.mode-job-update {
+                    background: color-mix(in srgb, var(--secondary-container) 34%, var(--surface));
+                }
+                .message.mode-job-complete {
+                    border-color: color-mix(in srgb, var(--tertiary) 48%, white);
+                    background: color-mix(in srgb, var(--tertiary-container) 40%, var(--surface));
+                    box-shadow: inset 0 0 0 1px rgba(78, 99, 84, 0.08);
+                }
                 .thread-focus {
                     display: grid;
-                    gap: 14px;
+                    gap: 12px;
                     min-height: 0;
                 }
                 .thread-hero {
                     display: grid;
-                    gap: 10px;
-                    padding: 14px 16px;
+                    gap: 8px;
+                    padding: 12px 14px;
                     border: 1px solid var(--line);
-                    border-radius: 24px;
+                    border-radius: 20px;
                     background:
                         linear-gradient(145deg, color-mix(in srgb, var(--primary-container) 92%, white), color-mix(in srgb, var(--surface) 94%, transparent)),
                         color-mix(in srgb, var(--surface-container-lowest) 92%, transparent);
@@ -675,51 +683,51 @@ pub fn App() -> impl IntoView {
                 }
                 .thread-hero h2 {
                     margin: 0;
-                    font-size: 1.5rem;
+                    font-size: 1.4rem;
                     line-height: 1.15;
                 }
                 .thread-hero .status {
                     margin: 0;
-                    font-size: 0.88rem;
+                    font-size: 0.82rem;
                 }
                 .thread-summary-row {
                     display: flex;
                     flex-wrap: wrap;
-                    gap: 8px;
+                    gap: 6px;
                 }
                 .thread-pill {
                     display: inline-flex;
                     align-items: center;
                     gap: 8px;
                     border-radius: 999px;
-                    padding: 8px 12px;
+                    padding: 6px 10px;
                     background: color-mix(in srgb, var(--surface-container-lowest) 88%, transparent);
                     color: var(--muted);
-                    font-size: 0.82rem;
+                    font-size: 0.76rem;
                     border: 1px solid rgba(147, 143, 153, 0.2);
                 }
                 .thread-primary {
                     display: grid;
                     gap: 10px;
-                    min-height: calc(100vh - 250px);
+                    min-height: calc(100vh - 228px);
                     grid-template-rows: minmax(0, 1fr) auto;
                     align-self: stretch;
                 }
                 .message-pane {
                     min-height: 0;
-                    max-height: calc(100vh - 310px);
+                    max-height: calc(100vh - 284px);
                     overflow-y: auto;
-                    padding: 2px 4px 96px 0;
+                    padding: 2px 4px 88px 0;
                     scroll-behavior: smooth;
                 }
                 .context-shell {
                     display: grid;
-                    gap: 10px;
+                    gap: 8px;
                     align-content: start;
                 }
                 .context-panel {
                     border: 1px solid var(--line);
-                    border-radius: 24px;
+                    border-radius: 20px;
                     background: color-mix(in srgb, var(--surface-container-low) 84%, transparent);
                     overflow: hidden;
                     box-shadow: var(--elevation-1);
@@ -727,8 +735,9 @@ pub fn App() -> impl IntoView {
                 .context-panel summary {
                     cursor: pointer;
                     list-style: none;
-                    padding: 12px 14px;
+                    padding: 10px 12px;
                     font-weight: 700;
+                    font-size: 0.92rem;
                     color: var(--ink);
                     background: color-mix(in srgb, var(--surface-container-high) 82%, transparent);
                 }
@@ -739,9 +748,9 @@ pub fn App() -> impl IntoView {
                     border-bottom: 1px solid var(--line);
                 }
                 .context-panel-body {
-                    padding: 12px 14px 14px 14px;
+                    padding: 10px 12px 12px 12px;
                     display: grid;
-                    gap: 10px;
+                    gap: 8px;
                 }
                 .message-header {
                     display: flex;
@@ -773,6 +782,8 @@ pub fn App() -> impl IntoView {
                 .mode-badge.handoff { background: #f1e2c8; color: #6e4a1d; }
                 .mode-badge.dispatch { background: #d6e3ff; color: #2f4b7f; }
                 .mode-badge.job-update { background: var(--secondary-container); color: #4b4166; }
+                .mode-badge.job-complete { background: var(--tertiary-container); color: #31503c; }
+                .mode-badge.job-complete.failed { background: var(--error-container); color: #8a2e2e; }
                 .mode-badge.system { background: color-mix(in srgb, var(--secondary-container) 88%, white); color: #5d3e84; }
                 .message-body { white-space: pre-wrap; }
                 .message-details {
@@ -987,10 +998,10 @@ pub fn App() -> impl IntoView {
                     }
                     .thread-primary {
                         grid-area: chat;
-                        min-height: calc(100vh - 228px);
+                        min-height: calc(100vh - 212px);
                     }
                     .message-pane {
-                        max-height: calc(100vh - 286px);
+                        max-height: calc(100vh - 252px);
                     }
                     .context-shell {
                         grid-area: context;
@@ -1086,10 +1097,10 @@ pub fn App() -> impl IntoView {
                         grid-template-columns: 1fr auto;
                         align-items: start;
                     }
-                    .thread-hero { padding: 16px; border-radius: 18px; }
+                    .thread-hero { padding: 14px; border-radius: 18px; }
                     .thread-hero h2 { font-size: 1.35rem; }
-                    .context-panel summary { padding: 12px 14px; }
-                    .context-panel-body { padding: 12px 14px 14px 14px; }
+                    .context-panel summary { padding: 10px 12px; }
+                    .context-panel-body { padding: 10px 12px 12px 12px; }
                     .thread-composer {
                         margin-top: 14px;
                         padding: 12px;
@@ -1097,7 +1108,7 @@ pub fn App() -> impl IntoView {
                         box-shadow: 0 10px 22px rgba(40, 34, 28, 0.08);
                     }
                     .message-pane {
-                        max-height: calc(100vh - 260px);
+                        max-height: calc(100vh - 240px);
                         padding-bottom: 96px;
                     }
                     .dispatch-grid { grid-template-columns: 1fr; }
@@ -1123,7 +1134,7 @@ pub fn App() -> impl IntoView {
                         font-size: 0.84rem;
                     }
                     .panel { border-radius: 16px; }
-                    .content { padding: 14px; }
+                    .content { padding: 12px; }
                     .sidebar-header,
                     .thread-focus,
                     .thread-primary,
@@ -1157,7 +1168,7 @@ pub fn App() -> impl IntoView {
                         min-height: 72px;
                     }
                     .message-pane {
-                        max-height: calc(100vh - 220px);
+                        max-height: calc(100vh - 208px);
                         padding-bottom: 88px;
                     }
                     .composer-actions > button,
@@ -1553,7 +1564,7 @@ pub fn App() -> impl IntoView {
                                             <div>
                                                 <p class="eyebrow">"Conversation"</p>
                                                 <h2>{thread_record.title.clone()}</h2>
-                                                <p class="status">"Chat is primary. Jobs, notes, and approvals live in the context panels below."</p>
+                                                <p class="status">"Chat stays primary. Job context lives in the side panels."</p>
                                             </div>
                                             <span class=format!(
                                                 "status-badge {}",

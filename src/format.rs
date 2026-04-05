@@ -66,6 +66,12 @@ pub(crate) fn message_result_details(message: &MessageRecord) -> Option<String> 
         .map(ToOwned::to_owned)
 }
 
+fn is_job_completion_status(status: &str) -> bool {
+    status.ends_with(":completed")
+        || status.ends_with(":failed")
+        || status.ends_with(":push_completed")
+}
+
 pub(crate) fn execution_intent_label(intent: &ExecutionIntent) -> &'static str {
     match intent {
         ExecutionIntent::WorkspaceChange => "Workspace Change",
@@ -82,6 +88,8 @@ pub(crate) fn message_mode_class(message: &MessageRecord) -> &'static str {
         "mode-handoff"
     } else if message.status == "workflow.dispatch.created" {
         "mode-dispatch"
+    } else if is_job_completion_status(&message.status) {
+        "mode-job-complete"
     } else if message.status.starts_with("job_event:") {
         "mode-job-update"
     } else {
@@ -98,6 +106,12 @@ pub(crate) fn message_mode_badge(message: &MessageRecord) -> Option<(&'static st
         Some(("handoff", "Workflow Handoff"))
     } else if message.status == "workflow.dispatch.created" {
         Some(("dispatch", "Direct Dispatch"))
+    } else if message.status.ends_with(":failed") {
+        Some(("job-complete failed", "Job Failed"))
+    } else if message.status.ends_with(":push_completed") {
+        Some(("job-complete", "Push Complete"))
+    } else if message.status.ends_with(":completed") {
+        Some(("job-complete", "Job Complete"))
     } else if message.status.starts_with("job_event:") {
         Some(("job-update", "Job Update"))
     } else if message.role == "system" {
@@ -161,8 +175,8 @@ pub(crate) fn format_string_list(values: &[String]) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        execution_intent_label, message_execution_draft, message_result_details,
-        report_last_message,
+        execution_intent_label, message_execution_draft, message_mode_badge, message_mode_class,
+        message_result_details, report_last_message,
     };
     use crate::models::ExecutionIntent;
     use crate::models::MessageRecord;
@@ -230,6 +244,42 @@ mod tests {
         assert_eq!(
             message_result_details(&message),
             Some("Detailed job metadata".to_string())
+        );
+    }
+
+    #[test]
+    fn marks_completed_job_messages_as_job_complete() {
+        let message = MessageRecord {
+            id: "m3".into(),
+            role: "assistant".into(),
+            content: "done".into(),
+            status: "job_event:job:completed".into(),
+            payload_json: json!({}),
+            created_at: String::new(),
+        };
+
+        assert_eq!(message_mode_class(&message), "mode-job-complete");
+        assert_eq!(
+            message_mode_badge(&message),
+            Some(("job-complete", "Job Complete"))
+        );
+    }
+
+    #[test]
+    fn keeps_started_job_messages_as_job_updates() {
+        let message = MessageRecord {
+            id: "m4".into(),
+            role: "assistant".into(),
+            content: "started".into(),
+            status: "job_event:job:started".into(),
+            payload_json: json!({}),
+            created_at: String::new(),
+        };
+
+        assert_eq!(message_mode_class(&message), "mode-job-update");
+        assert_eq!(
+            message_mode_badge(&message),
+            Some(("job-update", "Job Update"))
         );
     }
 }
