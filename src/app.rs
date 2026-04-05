@@ -857,51 +857,43 @@ pub fn App() -> impl IntoView {
                 }
                 .thread-composer {
                     margin-top: 0;
-                    padding: 12px 14px;
+                    padding: 10px 12px;
                     border: 1px solid var(--line);
                     border-radius: 20px;
                     background: color-mix(in srgb, var(--surface) 96%, transparent);
                     display: grid;
-                    gap: 10px;
+                    gap: 8px;
                     position: sticky;
                     bottom: 14px;
                     box-shadow: var(--elevation-3);
                     z-index: 2;
                 }
-                .composer-header {
-                    display: flex;
-                    justify-content: space-between;
-                    gap: 10px;
-                    flex-wrap: wrap;
-                    color: var(--muted);
-                    font-size: 0.8rem;
+                .composer-input-wrap {
+                    position: relative;
                 }
-                .composer-eyebrow {
-                    margin-bottom: 4px;
+                .composer-input-wrap textarea {
+                    min-height: 78px;
+                    padding-right: 64px;
+                    padding-bottom: 18px;
+                    border-radius: 22px;
                 }
-                .composer-header strong {
-                    display: block;
-                    color: var(--ink);
-                    font-size: 0.92rem;
-                    line-height: 1.28;
-                }
-                .composer-quick-actions {
-                    display: flex;
-                    flex-wrap: wrap;
-                    gap: 6px;
-                    align-items: flex-start;
-                    justify-content: flex-end;
-                }
-                .composer-quick-actions .thread-pill {
-                    padding: 4px 8px;
-                    font-size: 0.7rem;
-                }
-                .composer-actions {
-                    display: flex;
-                    justify-content: space-between;
+                .composer-send {
+                    position: absolute;
+                    right: 12px;
+                    bottom: 12px;
+                    width: 42px;
+                    height: 42px;
+                    min-width: 42px;
+                    min-height: 42px;
+                    padding: 0;
+                    border-radius: 999px;
+                    display: inline-flex;
                     align-items: center;
-                    gap: 10px;
-                    flex-wrap: wrap;
+                    justify-content: center;
+                    font-size: 1rem;
+                    line-height: 1;
+                    background: var(--accent);
+                    box-shadow: var(--elevation-2);
                 }
                 .composer-status {
                     margin: 0;
@@ -1193,27 +1185,26 @@ pub fn App() -> impl IntoView {
                         bottom: 12px;
                         box-shadow: 0 10px 22px rgba(40, 34, 28, 0.08);
                     }
-                    .composer-header {
-                        gap: 6px;
+                    .composer-input-wrap textarea {
+                        min-height: 72px;
+                        padding-right: 58px;
                     }
-                    .composer-header strong {
-                        font-size: 0.84rem;
-                    }
-                    .composer-quick-actions {
-                        display: none;
+                    .composer-send {
+                        width: 40px;
+                        height: 40px;
+                        min-width: 40px;
+                        min-height: 40px;
+                        right: 10px;
+                        bottom: 10px;
                     }
                     .message-pane {
                         max-height: calc(100vh - 176px);
                         padding-bottom: 88px;
                     }
                     .dispatch-grid { grid-template-columns: 1fr; }
-                    .composer-actions,
                     .composer-dispatch-actions,
                     .composer-header {
                         align-items: flex-start;
-                    }
-                    .composer-quick-actions {
-                        justify-content: flex-start;
                     }
                 }
                 @media (max-width: 640px) {
@@ -1231,10 +1222,7 @@ pub fn App() -> impl IntoView {
                     .thread-focus,
                     .thread-primary,
                     .context-shell { gap: 12px; }
-                    .thread-hero {
-                        padding: 10px 12px;
-                        gap: 6px;
-                    }
+                    .thread-hero { padding: 10px 12px; gap: 6px; }
                     .thread-pill {
                         width: 100%;
                         justify-content: flex-start;
@@ -1261,14 +1249,11 @@ pub fn App() -> impl IntoView {
                         align-items: flex-start;
                         gap: 6px;
                     }
-                    .thread-composer textarea {
-                        min-height: 72px;
-                    }
+                    .thread-composer textarea { min-height: 70px; }
                     .message-pane {
                         max-height: calc(100vh - 168px);
                         padding-bottom: 82px;
                     }
-                    .composer-actions > button,
                     .composer-dispatch-actions > button {
                         width: 100%;
                     }
@@ -1638,7 +1623,6 @@ pub fn App() -> impl IntoView {
                         >
                             {move || if sidebar_open.get() { "Hide Threads" } else { "Show Threads" }}
                         </button>
-                        <span class="topbar-chip">"Chat view"</span>
                     </div>
                     {move || {
                         if let Some(thread) = selected_thread.get() {
@@ -1661,7 +1645,6 @@ pub fn App() -> impl IntoView {
                                             <div>
                                                 <p class="eyebrow">"Conversation"</p>
                                                 <h2>{thread_record.title.clone()}</h2>
-                                                <p class="status">"Chat stays primary. Job context lives in the side panels."</p>
                                                 <div class="thread-mobile-meta">
                                                     <strong>{format!("{} messages", messages.len())}</strong>
                                                     <span>{format!("{} jobs", jobs.len())}</span>
@@ -2602,27 +2585,17 @@ pub fn App() -> impl IntoView {
                                             }
                                         });
                                     }>
-                                        <div class="composer-header">
-                                            <div>
-                                                <p class="eyebrow composer-eyebrow">"Message Elowen"</p>
-                                                <strong>"Chat first. Reach for laptop execution only when the request needs real repo work."</strong>
-                                            </div>
-                                            <div class="composer-quick-actions">
-                                                <span class="thread-pill">"Default: conversational reply"</span>
-                                                <span class="thread-pill">"Fallback: run on laptop"</span>
-                                            </div>
+                                        <div class="composer-input-wrap">
+                                            <textarea
+                                                placeholder="Message Elowen"
+                                                prop:value=move || new_message_content.get()
+                                                on:input=move |ev| set_new_message_content.set(event_target_value(&ev))
+                                            />
+                                            <button type="submit" class="composer-send" aria-label="Send message">"^"</button>
                                         </div>
-                                        <textarea
-                                            placeholder="Send a message to Elowen"
-                                            prop:value=move || new_message_content.get()
-                                            on:input=move |ev| set_new_message_content.set(event_target_value(&ev))
-                                        />
                                         <details class="dispatch-fallback">
                                             <summary>"More Actions"</summary>
                                             <div class="composer-tools">
-                                                <p class="dispatch-caption">
-                                                    "Use this only when the current message should become a real laptop job. The message body above becomes the request text."
-                                                </p>
                                                 <div class="dispatch-grid">
                                                     <input
                                                         type="text"
@@ -2720,12 +2693,6 @@ pub fn App() -> impl IntoView {
                                                 </div>
                                             </div>
                                         </details>
-                                        <div class="composer-actions">
-                                            <p class="composer-status">
-                                                "Send a normal chat message here. If the conversation needs real execution, open More Actions and hand it off explicitly."
-                                            </p>
-                                            <button type="submit">"Send Message"</button>
-                                        </div>
                                     </form>
                                     </div>
                                 </div>
