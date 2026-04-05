@@ -652,15 +652,15 @@ pub fn App() -> impl IntoView {
                 .message.mode-dispatch, .message.mode-job-update { border-color: #7e8cc1; }
                 .thread-focus {
                     display: grid;
-                    gap: 18px;
+                    gap: 14px;
                     min-height: 0;
                 }
                 .thread-hero {
                     display: grid;
-                    gap: 14px;
-                    padding: 18px 20px;
+                    gap: 10px;
+                    padding: 14px 16px;
                     border: 1px solid var(--line);
-                    border-radius: 28px;
+                    border-radius: 24px;
                     background:
                         linear-gradient(145deg, color-mix(in srgb, var(--primary-container) 92%, white), color-mix(in srgb, var(--surface) 94%, transparent)),
                         color-mix(in srgb, var(--surface-container-lowest) 92%, transparent);
@@ -668,19 +668,24 @@ pub fn App() -> impl IntoView {
                 }
                 .thread-hero-header {
                     display: flex;
-                    align-items: flex-start;
+                    align-items: center;
                     justify-content: space-between;
-                    gap: 14px;
+                    gap: 12px;
                     flex-wrap: wrap;
                 }
                 .thread-hero h2 {
-                    margin-bottom: 4px;
-                    font-size: 2rem;
+                    margin: 0;
+                    font-size: 1.5rem;
+                    line-height: 1.15;
+                }
+                .thread-hero .status {
+                    margin: 0;
+                    font-size: 0.88rem;
                 }
                 .thread-summary-row {
                     display: flex;
                     flex-wrap: wrap;
-                    gap: 10px;
+                    gap: 8px;
                 }
                 .thread-pill {
                     display: inline-flex;
@@ -695,20 +700,22 @@ pub fn App() -> impl IntoView {
                 }
                 .thread-primary {
                     display: grid;
-                    gap: 12px;
-                    min-height: min(72vh, calc(100vh - 280px));
+                    gap: 10px;
+                    min-height: calc(100vh - 250px);
                     grid-template-rows: minmax(0, 1fr) auto;
+                    align-self: stretch;
                 }
                 .message-pane {
                     min-height: 0;
-                    max-height: min(68vh, calc(100vh - 320px));
+                    max-height: calc(100vh - 310px);
                     overflow-y: auto;
-                    padding: 4px 6px 120px 0;
+                    padding: 2px 4px 96px 0;
                     scroll-behavior: smooth;
                 }
                 .context-shell {
                     display: grid;
-                    gap: 12px;
+                    gap: 10px;
+                    align-content: start;
                 }
                 .context-panel {
                     border: 1px solid var(--line);
@@ -720,7 +727,7 @@ pub fn App() -> impl IntoView {
                 .context-panel summary {
                     cursor: pointer;
                     list-style: none;
-                    padding: 14px 16px;
+                    padding: 12px 14px;
                     font-weight: 700;
                     color: var(--ink);
                     background: color-mix(in srgb, var(--surface-container-high) 82%, transparent);
@@ -732,9 +739,9 @@ pub fn App() -> impl IntoView {
                     border-bottom: 1px solid var(--line);
                 }
                 .context-panel-body {
-                    padding: 14px 16px 16px 16px;
+                    padding: 12px 14px 14px 14px;
                     display: grid;
-                    gap: 12px;
+                    gap: 10px;
                 }
                 .message-header {
                     display: flex;
@@ -800,44 +807,44 @@ pub fn App() -> impl IntoView {
                 }
                 .thread-composer {
                     margin-top: 0;
-                    padding: 16px;
+                    padding: 12px 14px;
                     border: 1px solid var(--line);
-                    border-radius: 24px;
+                    border-radius: 20px;
                     background: color-mix(in srgb, var(--surface) 96%, transparent);
                     display: grid;
-                    gap: 12px;
+                    gap: 10px;
                     position: sticky;
-                    bottom: 18px;
+                    bottom: 14px;
                     box-shadow: var(--elevation-3);
                     z-index: 2;
                 }
                 .composer-header {
                     display: flex;
                     justify-content: space-between;
-                    gap: 12px;
+                    gap: 10px;
                     flex-wrap: wrap;
                     color: var(--muted);
-                    font-size: 0.86rem;
+                    font-size: 0.8rem;
                 }
                 .composer-eyebrow {
-                    margin-bottom: 6px;
+                    margin-bottom: 4px;
                 }
                 .composer-header strong {
                     display: block;
                     color: var(--ink);
-                    font-size: 0.98rem;
-                    line-height: 1.35;
+                    font-size: 0.92rem;
+                    line-height: 1.28;
                 }
                 .composer-quick-actions {
                     display: flex;
                     flex-wrap: wrap;
-                    gap: 8px;
+                    gap: 6px;
                     align-items: flex-start;
                     justify-content: flex-end;
                 }
                 .composer-quick-actions .thread-pill {
-                    padding: 6px 10px;
-                    font-size: 0.74rem;
+                    padding: 4px 8px;
+                    font-size: 0.7rem;
                 }
                 .composer-actions {
                     display: flex;
@@ -849,7 +856,7 @@ pub fn App() -> impl IntoView {
                 .composer-status {
                     margin: 0;
                     color: var(--muted);
-                    font-size: 0.84rem;
+                    font-size: 0.78rem;
                     max-width: 34rem;
                 }
                 .dispatch-fallback {
@@ -872,14 +879,14 @@ pub fn App() -> impl IntoView {
                     border-bottom: 1px solid var(--line);
                 }
                 .composer-tools {
-                    padding: 12px 14px 14px 14px;
+                    padding: 10px 12px 12px 12px;
                     display: grid;
-                    gap: 10px;
+                    gap: 8px;
                 }
                 .dispatch-caption {
                     margin: 0;
                     color: var(--muted);
-                    font-size: 0.84rem;
+                    font-size: 0.78rem;
                     line-height: 1.45;
                 }
                 .dispatch-grid {
@@ -951,7 +958,7 @@ pub fn App() -> impl IntoView {
                 .draft-actions {
                     display: flex;
                     flex-wrap: wrap;
-                    gap: 10px;
+                    gap: 8px;
                     align-items: center;
                 }
                 .draft-rationale {
@@ -960,12 +967,39 @@ pub fn App() -> impl IntoView {
                     margin: 0;
                 }
                 .empty {
-                    padding: 36px 24px;
+                    padding: 24px 18px;
                     border: 1px dashed var(--line);
                     border-radius: 18px;
                     text-align: center;
                     color: var(--muted);
                     background: rgba(255,255,255,0.6);
+                }
+                @media (min-width: 921px) {
+                    .thread-focus {
+                        grid-template-columns: minmax(0, 1fr) 320px;
+                        grid-template-areas:
+                            "hero hero"
+                            "chat context";
+                        align-items: start;
+                    }
+                    .thread-hero {
+                        grid-area: hero;
+                    }
+                    .thread-primary {
+                        grid-area: chat;
+                        min-height: calc(100vh - 228px);
+                    }
+                    .message-pane {
+                        max-height: calc(100vh - 286px);
+                    }
+                    .context-shell {
+                        grid-area: context;
+                        position: sticky;
+                        top: 106px;
+                        max-height: calc(100vh - 136px);
+                        overflow-y: auto;
+                        padding-right: 2px;
+                    }
                 }
                 @media (max-width: 920px) {
                     .app-shell { padding: 16px; }
@@ -1053,18 +1087,18 @@ pub fn App() -> impl IntoView {
                         align-items: start;
                     }
                     .thread-hero { padding: 16px; border-radius: 18px; }
-                    .thread-hero h2 { font-size: 1.6rem; }
+                    .thread-hero h2 { font-size: 1.35rem; }
                     .context-panel summary { padding: 12px 14px; }
                     .context-panel-body { padding: 12px 14px 14px 14px; }
                     .thread-composer {
                         margin-top: 14px;
-                        padding: 14px;
+                        padding: 12px;
                         bottom: 12px;
                         box-shadow: 0 10px 22px rgba(40, 34, 28, 0.08);
                     }
                     .message-pane {
-                        max-height: calc(100vh - 300px);
-                        padding-bottom: 112px;
+                        max-height: calc(100vh - 260px);
+                        padding-bottom: 96px;
                     }
                     .dispatch-grid { grid-template-columns: 1fr; }
                     .composer-actions,
@@ -1120,11 +1154,11 @@ pub fn App() -> impl IntoView {
                         gap: 6px;
                     }
                     .thread-composer textarea {
-                        min-height: 80px;
+                        min-height: 72px;
                     }
                     .message-pane {
-                        max-height: calc(100vh - 250px);
-                        padding-bottom: 104px;
+                        max-height: calc(100vh - 220px);
+                        padding-bottom: 88px;
                     }
                     .composer-actions > button,
                     .composer-dispatch-actions > button {
