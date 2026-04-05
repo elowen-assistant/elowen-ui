@@ -346,6 +346,12 @@ pub fn App() -> impl IntoView {
                     font-size: 0.74rem;
                     font-weight: 600;
                 }
+                .topbar-chip.operator {
+                    max-width: 220px;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                    white-space: nowrap;
+                }
                 .nav-fab {
                     display: none;
                     min-width: 48px;
@@ -427,6 +433,11 @@ pub fn App() -> impl IntoView {
                     border: 1px solid rgba(92, 95, 190, 0.12);
                     border-radius: 18px;
                     background: color-mix(in srgb, var(--primary-container) 74%, var(--surface));
+                }
+                .sidebar-status.compact {
+                    padding: 8px 10px;
+                    border-radius: 14px;
+                    background: color-mix(in srgb, var(--surface-container-high) 86%, transparent);
                 }
                 .sidebar-status .status {
                     margin: 0;
@@ -511,36 +522,41 @@ pub fn App() -> impl IntoView {
                 button:active { transform: translateY(0); }
                 .sidebar-section { display: grid; gap: 12px; }
                 .sidebar-section + .sidebar-section { margin-top: 8px; }
-                .thread-list { display: grid; gap: 10px; }
+                .thread-list { display: grid; gap: 8px; }
                 .thread-list, .job-list, .message-list, .job-event-list, .summary-block, .approval-list, .report-grid {
                     min-width: 0;
                 }
                 .thread-card {
                     border: 1px solid var(--line);
-                    border-radius: 22px;
-                    padding: 14px 15px;
+                    border-radius: 18px;
+                    padding: 10px 12px;
                     background: color-mix(in srgb, var(--surface-container-low) 90%, transparent);
                     cursor: pointer;
                     display: grid;
-                    gap: 8px;
-                    box-shadow: var(--elevation-1);
+                    gap: 6px;
                 }
                 .thread-card.active {
                     border-color: rgba(92, 95, 190, 0.26);
                     background: color-mix(in srgb, var(--primary-container) 84%, var(--surface));
-                    box-shadow: var(--elevation-2);
+                    box-shadow: var(--elevation-1);
+                }
+                .thread-card-header {
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    gap: 10px;
                 }
                 .thread-card h3 {
                     margin-bottom: 0;
-                    font-size: 1rem;
+                    font-size: 0.95rem;
                     font-weight: 650;
                     line-height: 1.3;
                 }
                 .thread-card p {
                     margin: 0;
                     color: var(--muted);
-                    font-size: 0.84rem;
-                    line-height: 1.4;
+                    font-size: 0.79rem;
+                    line-height: 1.35;
                 }
                 .thread-meta, .job-meta, .message header, .job-event header {
                     display: flex;
@@ -548,6 +564,25 @@ pub fn App() -> impl IntoView {
                     gap: 12px;
                     color: var(--muted);
                     font-size: 0.82rem;
+                }
+                .thread-meta {
+                    justify-content: flex-start;
+                    gap: 8px 12px;
+                    flex-wrap: wrap;
+                    font-size: 0.76rem;
+                }
+                .thread-status-dot {
+                    width: 8px;
+                    height: 8px;
+                    border-radius: 999px;
+                    background: var(--primary);
+                    flex: 0 0 auto;
+                    margin-top: 5px;
+                }
+                .thread-card-time {
+                    font-size: 0.74rem;
+                    color: var(--muted);
+                    white-space: nowrap;
                 }
                 .message-list, .job-list, .job-event-list { display: grid; gap: 12px; }
                 .job-card, .message, .job-event, .job-detail, .approval-card, .report-grid article, .note-card {
@@ -1086,7 +1121,7 @@ pub fn App() -> impl IntoView {
                         justify-content: space-between;
                         align-items: center;
                         gap: 10px;
-                        margin-bottom: 10px;
+                        margin-bottom: 8px;
                     }
                     .sidebar-toggle,
                 .sidebar-close {
@@ -1105,6 +1140,9 @@ pub fn App() -> impl IntoView {
                     .sidebar-header {
                         grid-template-columns: 1fr auto;
                         align-items: start;
+                    }
+                    .sidebar-status.compact {
+                        display: none;
                     }
                     .thread-focus {
                         gap: 10px;
@@ -1211,6 +1249,9 @@ pub fn App() -> impl IntoView {
                     .note-card {
                         padding: 14px;
                         border-radius: 16px;
+                    }
+                    .thread-card {
+                        padding: 10px 12px;
                     }
                     .message-header,
                     .thread-meta,
@@ -1355,8 +1396,51 @@ pub fn App() -> impl IntoView {
                     </div>
                 </div>
                 <div class="app-topbar-actions">
-                    <span class="topbar-chip">"Chat default"</span>
-                    <span class="topbar-chip">"Laptop explicit"</span>
+                    {move || {
+                        match auth_session.get().and_then(|session| session.operator_label) {
+                            Some(operator_label) => view! {
+                                <>
+                                    <span class="topbar-chip operator">{operator_label}</span>
+                                    <button
+                                        type="button"
+                                        class="logout-button"
+                                        on:click=move |_| {
+                                            spawn_local({
+                                                let set_auth_session = set_auth_session;
+                                                let set_status_text = set_status_text;
+                                                let set_selected_thread = set_selected_thread;
+                                                let set_selected_thread_id = set_selected_thread_id;
+                                                let set_selected_job_detail = set_selected_job_detail;
+                                                let set_selected_job_id = set_selected_job_id;
+                                                let set_threads = set_threads;
+                                                let set_jobs = set_jobs;
+                                                async move {
+                                                    match logout_session().await {
+                                                        Ok(session) => {
+                                                            set_auth_session.set(Some(session));
+                                                            set_status_text.set("Signed out.".to_string());
+                                                            set_selected_thread.set(None);
+                                                            set_selected_thread_id.set(None);
+                                                            set_selected_job_detail.set(None);
+                                                            set_selected_job_id.set(None);
+                                                            set_threads.set(Vec::new());
+                                                            set_jobs.set(Vec::new());
+                                                        }
+                                                        Err(error) => {
+                                                            set_status_text.set(format!("Failed to sign out: {error}"));
+                                                        }
+                                                    }
+                                                }
+                                            });
+                                        }
+                                    >
+                                        "Sign Out"
+                                    </button>
+                                </>
+                            }.into_any(),
+                            None => view! { <span class="topbar-chip">"Protected workspace"</span> }.into_any(),
+                        }
+                    }}
                 </div>
             </section>
             <div class="frame">
@@ -1370,57 +1454,10 @@ pub fn App() -> impl IntoView {
                 <section class="panel sidebar">
                     <div class="sidebar-header">
                         <div>
-                            <p class="eyebrow">"Elowen Workspace"</p>
-                            <h1>"Inbox"</h1>
+                            <h1>"Chats"</h1>
                         </div>
-                        <div class="sidebar-status">
-                            <p class="eyebrow">"Workspace Status"</p>
+                        <div class="sidebar-status compact">
                             <p class="status">{move || status_text.get()}</p>
-                            {move || {
-                                match auth_session.get().and_then(|session| session.operator_label) {
-                                    Some(operator_label) => view! {
-                                        <>
-                                            <p class="status">{format!("Signed in as {operator_label}")}</p>
-                                            <button
-                                                type="button"
-                                                class="logout-button"
-                                                on:click=move |_| {
-                                                    spawn_local({
-                                                        let set_auth_session = set_auth_session;
-                                                        let set_status_text = set_status_text;
-                                                        let set_selected_thread = set_selected_thread;
-                                                        let set_selected_thread_id = set_selected_thread_id;
-                                                        let set_selected_job_detail = set_selected_job_detail;
-                                                        let set_selected_job_id = set_selected_job_id;
-                                                        let set_threads = set_threads;
-                                                        let set_jobs = set_jobs;
-                                                        async move {
-                                                            match logout_session().await {
-                                                                Ok(session) => {
-                                                                    set_auth_session.set(Some(session));
-                                                                    set_status_text.set("Signed out.".to_string());
-                                                                    set_selected_thread.set(None);
-                                                                    set_selected_thread_id.set(None);
-                                                                    set_selected_job_detail.set(None);
-                                                                    set_selected_job_id.set(None);
-                                                                    set_threads.set(Vec::new());
-                                                                    set_jobs.set(Vec::new());
-                                                                }
-                                                                Err(error) => {
-                                                                    set_status_text.set(format!("Failed to sign out: {error}"));
-                                                                }
-                                                            }
-                                                        }
-                                                    });
-                                                }
-                                            >
-                                                "Sign Out"
-                                            </button>
-                                        </>
-                                    }.into_any(),
-                                    None => ().into_any(),
-                                }
-                            }}
                         </div>
                         <button
                             type="button"
@@ -1508,11 +1545,14 @@ pub fn App() -> impl IntoView {
                                                 }
                                             }
                                         >
-                                            <h3>{thread.title.clone()}</h3>
-                                            <p>{format!("{} messages", thread.message_count)}</p>
+                                            <div class="thread-card-header">
+                                                <h3>{thread.title.clone()}</h3>
+                                                <span class="thread-card-time">{updated_at.clone()}</span>
+                                            </div>
                                             <div class="thread-meta">
+                                                <span class="thread-status-dot"></span>
                                                 <span>{thread.status.clone()}</span>
-                                                <span>{updated_at.clone()}</span>
+                                                <span>{format!("{} messages", thread.message_count)}</span>
                                             </div>
                                         </article>
                                     }
