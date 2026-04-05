@@ -246,20 +246,36 @@ pub fn App() -> impl IntoView {
             <style>
                 {r#"
                 :root {
-                    --bg: #f6f3f8;
-                    --surface: #fff8fc;
-                    --surface-container: #f2ebf3;
-                    --surface-container-high: #ece3ee;
-                    --surface-container-low: #faf5fb;
-                    --primary: #4f5d92;
-                    --primary-container: #dde1ff;
-                    --secondary: #5f5b71;
-                    --secondary-container: #e6def9;
-                    --tertiary-container: #d2f2e2;
-                    --ink: #1d1b20;
-                    --muted: #645f69;
+                    --bg: #f9f4fb;
+                    --bg-alt: #f2ecf4;
+                    --surface: #fffbff;
+                    --surface-container-lowest: #ffffff;
+                    --surface-container-low: #f8f2fa;
+                    --surface-container: #f1ebf3;
+                    --surface-container-high: #ebe5ed;
+                    --surface-container-highest: #e5dfe7;
+                    --primary: #5c5fbe;
+                    --primary-container: #e2e0ff;
+                    --on-primary-container: #1b1d5a;
+                    --secondary: #5d5f72;
+                    --secondary-container: #e2e2f9;
+                    --tertiary: #4e6354;
+                    --tertiary-container: #d0e8d4;
+                    --error-container: #f9dedc;
+                    --ink: #1c1b1f;
+                    --muted: #625b71;
                     --line: #cbc4d0;
                     --outline-strong: #938f99;
+                    --scrim: rgba(31, 27, 36, 0.34);
+                    --shadow-color: rgba(35, 28, 44, 0.16);
+                    --elevation-1: 0 1px 2px rgba(35, 28, 44, 0.12), 0 1px 3px rgba(35, 28, 44, 0.08);
+                    --elevation-2: 0 2px 6px rgba(35, 28, 44, 0.1), 0 8px 18px rgba(35, 28, 44, 0.08);
+                    --elevation-3: 0 3px 10px rgba(35, 28, 44, 0.12), 0 18px 36px rgba(35, 28, 44, 0.1);
+                    --shape-xs: 12px;
+                    --shape-sm: 16px;
+                    --shape-md: 24px;
+                    --shape-lg: 30px;
+                    --shape-xl: 36px;
                     --accent: var(--primary);
                     --accent-soft: var(--primary-container);
                 }
@@ -267,30 +283,92 @@ pub fn App() -> impl IntoView {
                 body {
                     margin: 0;
                     background:
-                        radial-gradient(circle at top left, rgba(79, 93, 146, 0.18), transparent 28%),
-                        linear-gradient(180deg, #f3edf7 0%, var(--bg) 100%);
+                        radial-gradient(circle at top left, rgba(92, 95, 190, 0.16), transparent 24%),
+                        radial-gradient(circle at top right, rgba(93, 95, 114, 0.08), transparent 28%),
+                        linear-gradient(180deg, var(--bg) 0%, var(--bg-alt) 100%);
                     color: var(--ink);
-                    font-family: "Segoe UI Variable Text", "Segoe UI", "Noto Sans", system-ui, sans-serif;
+                    font-family: "Segoe UI Variable Text", "Segoe UI", "Roboto", "Noto Sans", system-ui, sans-serif;
                     overflow-x: hidden;
                 }
                 .app-shell { min-height: 100vh; padding: 24px; overflow-x: hidden; }
+                .workspace-shell {
+                    max-width: 1320px;
+                    margin: 0 auto;
+                    display: grid;
+                    gap: 18px;
+                }
+                .app-topbar {
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    gap: 16px;
+                    padding: 16px 20px;
+                    border-radius: var(--shape-xl);
+                    min-width: 0;
+                }
+                .app-topbar-leading {
+                    display: flex;
+                    align-items: center;
+                    gap: 14px;
+                    min-width: 0;
+                }
+                .app-topbar-copy {
+                    min-width: 0;
+                    display: grid;
+                    gap: 2px;
+                }
+                .app-topbar-copy h2 {
+                    margin: 0;
+                    font-size: 1.35rem;
+                    line-height: 1.2;
+                    letter-spacing: -0.02em;
+                }
+                .topbar-subtitle {
+                    margin: 0;
+                    color: var(--muted);
+                    font-size: 0.9rem;
+                }
+                .app-topbar-actions {
+                    display: flex;
+                    align-items: center;
+                    justify-content: flex-end;
+                    gap: 10px;
+                    flex-wrap: wrap;
+                }
+                .topbar-chip {
+                    display: inline-flex;
+                    align-items: center;
+                    border-radius: 999px;
+                    padding: 8px 12px;
+                    background: var(--surface-container);
+                    color: var(--muted);
+                    border: 1px solid rgba(147, 143, 153, 0.24);
+                    font-size: 0.8rem;
+                    font-weight: 600;
+                }
+                .nav-fab {
+                    display: none;
+                    min-width: 48px;
+                    min-height: 48px;
+                    padding: 0 18px;
+                    border-radius: 16px;
+                    background: var(--primary-container);
+                    color: var(--on-primary-container);
+                    box-shadow: var(--elevation-2);
+                }
                 .frame {
                     display: grid;
                     grid-template-columns: 308px 1fr;
                     gap: 20px;
-                    max-width: 1280px;
-                    margin: 0 auto;
                     align-items: start;
                     position: relative;
                 }
                 .panel {
-                    background: rgba(255, 248, 252, 0.94);
-                    border: 1px solid var(--line);
-                    border-radius: 28px;
-                    box-shadow:
-                        0 2px 4px rgba(29, 27, 32, 0.08),
-                        0 16px 32px rgba(79, 93, 146, 0.08);
-                    backdrop-filter: blur(10px);
+                    background: color-mix(in srgb, var(--surface) 92%, transparent);
+                    border: 1px solid color-mix(in srgb, var(--line) 78%, transparent);
+                    border-radius: var(--shape-xl);
+                    box-shadow: var(--elevation-2);
+                    backdrop-filter: blur(18px);
                     min-width: 0;
                 }
                 .sidebar-shell { min-width: 0; }
@@ -300,10 +378,8 @@ pub fn App() -> impl IntoView {
                     display: none;
                 }
                 .sidebar { padding: 18px; display: flex; flex-direction: column; gap: 16px; }
-                .content { padding: 24px; min-height: 70vh; min-width: 0; overflow-x: hidden; }
-                .content-toolbar {
-                    display: none;
-                }
+                .content { padding: 24px; min-height: 70vh; min-width: 0; overflow-x: hidden; background: color-mix(in srgb, var(--surface-container-lowest) 76%, transparent); }
+                .content-toolbar { display: none; }
                 .auth-shell {
                     min-height: calc(100vh - 48px);
                     display: grid;
@@ -313,11 +389,9 @@ pub fn App() -> impl IntoView {
                     width: min(460px, 100%);
                     padding: 28px;
                     border: 1px solid var(--line);
-                    border-radius: 28px;
-                    background: rgba(255, 248, 252, 0.96);
-                    box-shadow:
-                        0 2px 6px rgba(29, 27, 32, 0.1),
-                        0 18px 36px rgba(79, 93, 146, 0.12);
+                    border-radius: var(--shape-xl);
+                    background: color-mix(in srgb, var(--surface) 96%, transparent);
+                    box-shadow: var(--elevation-3);
                     display: grid;
                     gap: 16px;
                 }
@@ -334,9 +408,9 @@ pub fn App() -> impl IntoView {
                     font-size: 0.9rem;
                 }
                 .logout-button {
-                    background: var(--secondary-container);
+                    background: color-mix(in srgb, var(--secondary-container) 88%, white);
                     color: #2f2a3a;
-                    box-shadow: none;
+                    box-shadow: var(--elevation-1);
                 }
                 .sidebar-header {
                     display: grid;
@@ -346,9 +420,9 @@ pub fn App() -> impl IntoView {
                     display: grid;
                     gap: 6px;
                     padding: 12px 14px;
-                    border: 1px solid rgba(79, 93, 146, 0.08);
-                    border-radius: 20px;
-                    background: rgba(221, 225, 255, 0.48);
+                    border: 1px solid rgba(92, 95, 190, 0.12);
+                    border-radius: 22px;
+                    background: color-mix(in srgb, var(--primary-container) 74%, var(--surface));
                 }
                 .sidebar-status .status {
                     margin: 0;
@@ -375,44 +449,42 @@ pub fn App() -> impl IntoView {
                     display: inline-flex;
                     align-items: center;
                     border-radius: 999px;
-                    padding: 5px 11px;
+                    padding: 6px 12px;
                     font-size: 0.74rem;
                     font-weight: 700;
                     letter-spacing: 0.04em;
                     text-transform: uppercase;
-                    background: rgba(95, 91, 113, 0.12);
+                    border: 1px solid rgba(147, 143, 153, 0.18);
+                    background: color-mix(in srgb, var(--surface-container) 88%, transparent);
                     color: var(--ink);
                 }
                 .status-badge.pending { background: #ece7df; color: #54483a; }
                 .status-badge.dispatched, .status-badge.accepted, .status-badge.running, .status-badge.pushing {
-                    background: #dde1ff;
-                    color: #2f4274;
+                    background: var(--primary-container);
+                    color: var(--on-primary-container);
                 }
                 .status-badge.awaiting_approval { background: #f3e1b7; color: #6a4d12; }
                 .status-badge.completed, .status-badge.approved, .status-badge.success {
-                    background: #d2f2e2;
+                    background: var(--tertiary-container);
                     color: #21543d;
                 }
-                .status-badge.failed, .status-badge.rejected, .status-badge.failure {
-                    background: #f6d9d5;
-                    color: #7a2f25;
-                }
+                .status-badge.failed, .status-badge.rejected, .status-badge.failure { background: var(--error-container); color: #7a2f25; }
                 form { display: grid; gap: 10px; }
                 input, textarea, button { font: inherit; }
                 input, textarea {
                     width: 100%;
-                    border: 1px solid var(--outline-strong);
+                    border: 1px solid color-mix(in srgb, var(--outline-strong) 72%, transparent);
                     border-radius: 18px;
-                    padding: 13px 15px;
-                    background: rgba(255, 248, 252, 0.96);
+                    padding: 14px 16px;
+                    background: color-mix(in srgb, var(--surface-container-low) 90%, transparent);
                     color: var(--ink);
-                    transition: border-color 0.16s ease, box-shadow 0.16s ease, background 0.16s ease;
+                    transition: border-color 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
                 }
                 input:focus, textarea:focus {
                     outline: none;
                     border-color: var(--primary);
-                    box-shadow: 0 0 0 3px rgba(79, 93, 146, 0.14);
-                    background: #fff;
+                    box-shadow: 0 0 0 3px rgba(92, 95, 190, 0.16);
+                    background: var(--surface);
                 }
                 textarea { min-height: 110px; resize: vertical; }
                 button {
@@ -424,13 +496,15 @@ pub fn App() -> impl IntoView {
                     cursor: pointer;
                     font-weight: 700;
                     letter-spacing: 0.01em;
-                    box-shadow: 0 2px 6px rgba(79, 93, 146, 0.18);
-                    transition: transform 0.14s ease, box-shadow 0.14s ease, background 0.14s ease;
+                    box-shadow: var(--elevation-1);
+                    transition: transform 0.14s ease, box-shadow 0.14s ease, background 0.14s ease, filter 0.14s ease;
                 }
                 button:hover {
                     transform: translateY(-1px);
-                    box-shadow: 0 5px 12px rgba(79, 93, 146, 0.22);
+                    box-shadow: var(--elevation-2);
+                    filter: saturate(1.02);
                 }
+                button:active { transform: translateY(0); }
                 .sidebar-section { display: grid; gap: 12px; }
                 .sidebar-section + .sidebar-section { margin-top: 8px; }
                 .thread-list { display: grid; gap: 10px; }
@@ -441,15 +515,16 @@ pub fn App() -> impl IntoView {
                     border: 1px solid var(--line);
                     border-radius: 22px;
                     padding: 14px 15px;
-                    background: rgba(250, 245, 251, 0.9);
+                    background: color-mix(in srgb, var(--surface-container-low) 90%, transparent);
                     cursor: pointer;
                     display: grid;
                     gap: 8px;
+                    box-shadow: var(--elevation-1);
                 }
                 .thread-card.active {
-                    border-color: rgba(79, 93, 146, 0.3);
-                    background: rgba(221, 225, 255, 0.86);
-                    box-shadow: 0 6px 16px rgba(79, 93, 146, 0.12);
+                    border-color: rgba(92, 95, 190, 0.26);
+                    background: color-mix(in srgb, var(--primary-container) 84%, var(--surface));
+                    box-shadow: var(--elevation-2);
                 }
                 .thread-card h3 {
                     margin-bottom: 0;
@@ -475,10 +550,11 @@ pub fn App() -> impl IntoView {
                     border: 1px solid var(--line);
                     border-radius: 24px;
                     padding: 16px;
-                    background: rgba(255, 248, 252, 0.96);
+                    background: color-mix(in srgb, var(--surface) 94%, transparent);
+                    box-shadow: var(--elevation-1);
                 }
                 .job-card { cursor: pointer; }
-                .job-card.active { border-color: var(--accent); background: var(--accent-soft); }
+                .job-card.active { border-color: var(--accent); background: color-mix(in srgb, var(--accent-soft) 82%, var(--surface)); box-shadow: var(--elevation-2); }
                 .job-card.compact {
                     padding: 14px;
                     gap: 8px;
@@ -495,7 +571,7 @@ pub fn App() -> impl IntoView {
                     font-size: 0.8rem;
                 }
                 .job-meta { flex-wrap: wrap; justify-content: flex-start; gap: 10px 16px; }
-                .job-detail { background: rgba(255, 255, 255, 0.8); margin: 0 0 24px 0; }
+                .job-detail { background: color-mix(in srgb, var(--surface-container-lowest) 78%, transparent); margin: 0 0 24px 0; }
                 .job-overview {
                     display: grid;
                     grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
@@ -504,9 +580,9 @@ pub fn App() -> impl IntoView {
                 }
                 .job-overview article {
                     border: 1px solid var(--line);
-                    border-radius: 16px;
+                    border-radius: 18px;
                     padding: 14px;
-                    background: rgba(255, 255, 255, 0.84);
+                    background: color-mix(in srgb, var(--surface-container-lowest) 84%, transparent);
                 }
                 .job-overview strong {
                     display: block;
@@ -553,9 +629,9 @@ pub fn App() -> impl IntoView {
                     margin-top: 12px;
                 }
                 .button-secondary {
-                    background: var(--secondary-container);
+                    background: color-mix(in srgb, var(--secondary-container) 86%, white);
                     color: #2f2a3a;
-                    box-shadow: none;
+                    box-shadow: var(--elevation-1);
                 }
                 .job-event pre {
                     margin: 0;
@@ -568,8 +644,8 @@ pub fn App() -> impl IntoView {
                     font-size: 0.82rem;
                 }
                 .message.user { background: #fcf3e8; }
-                .message.assistant { background: #f2f5ff; }
-                .message.system { background: #f4eff9; }
+                .message.assistant { background: color-mix(in srgb, var(--primary-container) 42%, var(--surface)); }
+                .message.system { background: color-mix(in srgb, var(--secondary-container) 40%, var(--surface)); }
                 .message.mode-conversation { border-color: #7e8cc1; }
                 .message.mode-draft-ready { box-shadow: inset 0 0 0 1px rgba(79, 93, 146, 0.12); }
                 .message.mode-handoff { border-color: #9c7c44; background: #fbf5e7; }
@@ -586,8 +662,9 @@ pub fn App() -> impl IntoView {
                     border: 1px solid var(--line);
                     border-radius: 28px;
                     background:
-                        linear-gradient(145deg, rgba(221, 225, 255, 0.88), rgba(255, 248, 252, 0.96)),
-                        rgba(255, 255, 255, 0.92);
+                        linear-gradient(145deg, color-mix(in srgb, var(--primary-container) 92%, white), color-mix(in srgb, var(--surface) 94%, transparent)),
+                        color-mix(in srgb, var(--surface-container-lowest) 92%, transparent);
+                    box-shadow: var(--elevation-1);
                 }
                 .thread-hero-header {
                     display: flex;
@@ -611,10 +688,10 @@ pub fn App() -> impl IntoView {
                     gap: 8px;
                     border-radius: 999px;
                     padding: 8px 12px;
-                    background: rgba(255, 248, 252, 0.92);
+                    background: color-mix(in srgb, var(--surface-container-lowest) 88%, transparent);
                     color: var(--muted);
                     font-size: 0.82rem;
-                    border: 1px solid rgba(79, 93, 146, 0.08);
+                    border: 1px solid rgba(147, 143, 153, 0.2);
                 }
                 .thread-primary {
                     display: grid;
@@ -636,8 +713,9 @@ pub fn App() -> impl IntoView {
                 .context-panel {
                     border: 1px solid var(--line);
                     border-radius: 24px;
-                    background: rgba(250, 245, 251, 0.84);
+                    background: color-mix(in srgb, var(--surface-container-low) 84%, transparent);
                     overflow: hidden;
+                    box-shadow: var(--elevation-1);
                 }
                 .context-panel summary {
                     cursor: pointer;
@@ -645,7 +723,7 @@ pub fn App() -> impl IntoView {
                     padding: 14px 16px;
                     font-weight: 700;
                     color: var(--ink);
-                    background: rgba(236, 227, 238, 0.78);
+                    background: color-mix(in srgb, var(--surface-container-high) 82%, transparent);
                 }
                 .context-panel summary::-webkit-details-marker {
                     display: none;
@@ -680,20 +758,21 @@ pub fn App() -> impl IntoView {
                     font-weight: 700;
                     letter-spacing: 0.04em;
                     text-transform: uppercase;
-                    background: rgba(95, 91, 113, 0.12);
+                    border: 1px solid rgba(147, 143, 153, 0.18);
+                    background: color-mix(in srgb, var(--surface-container) 88%, transparent);
                     color: var(--ink);
                 }
-                .mode-badge.conversation { background: #dde1ff; color: #33457a; }
+                .mode-badge.conversation { background: var(--primary-container); color: #33457a; }
                 .mode-badge.handoff { background: #f1e2c8; color: #6e4a1d; }
                 .mode-badge.dispatch { background: #d6e3ff; color: #2f4b7f; }
-                .mode-badge.job-update { background: #e6def9; color: #4b4166; }
-                .mode-badge.system { background: #efe7fb; color: #5d3e84; }
+                .mode-badge.job-update { background: var(--secondary-container); color: #4b4166; }
+                .mode-badge.system { background: color-mix(in srgb, var(--secondary-container) 88%, white); color: #5d3e84; }
                 .message-body { white-space: pre-wrap; }
                 .message-details {
                     margin-top: 12px;
                     border: 1px solid #d8dfeb;
                     border-radius: 18px;
-                    background: rgba(255, 248, 252, 0.78);
+                    background: color-mix(in srgb, var(--surface-container-low) 78%, transparent);
                     overflow: hidden;
                 }
                 .message-details summary {
@@ -705,7 +784,7 @@ pub fn App() -> impl IntoView {
                     letter-spacing: 0.04em;
                     text-transform: uppercase;
                     color: var(--muted);
-                    background: rgba(221, 231, 247, 0.4);
+                    background: color-mix(in srgb, var(--primary-container) 52%, transparent);
                 }
                 .message-details summary::-webkit-details-marker {
                     display: none;
@@ -724,14 +803,12 @@ pub fn App() -> impl IntoView {
                     padding: 16px;
                     border: 1px solid var(--line);
                     border-radius: 24px;
-                    background: rgba(255, 248, 252, 0.96);
+                    background: color-mix(in srgb, var(--surface) 96%, transparent);
                     display: grid;
                     gap: 12px;
                     position: sticky;
                     bottom: 18px;
-                    box-shadow:
-                        0 2px 6px rgba(29, 27, 32, 0.1),
-                        0 18px 36px rgba(79, 93, 146, 0.12);
+                    box-shadow: var(--elevation-3);
                     z-index: 2;
                 }
                 .composer-header {
@@ -778,7 +855,7 @@ pub fn App() -> impl IntoView {
                 .dispatch-fallback {
                     border: 1px solid var(--line);
                     border-radius: 20px;
-                    background: rgba(236, 227, 238, 0.7);
+                    background: color-mix(in srgb, var(--surface-container) 74%, transparent);
                     overflow: hidden;
                 }
                 .dispatch-fallback summary {
@@ -819,12 +896,13 @@ pub fn App() -> impl IntoView {
                 }
                 .composer-dispatch-actions .button-secondary {
                     background: #8b6a42;
+                    color: white;
                 }
                 .result-message {
                     border: 1px solid #b8d3c7;
                     border-radius: 16px;
                     padding: 14px;
-                    background: #f6fbf8;
+                    background: color-mix(in srgb, var(--tertiary-container) 44%, var(--surface));
                 }
                 .result-message pre {
                     background: transparent;
@@ -835,7 +913,7 @@ pub fn App() -> impl IntoView {
                     padding: 14px;
                     border: 1px solid #b8d3c7;
                     border-radius: 16px;
-                    background: rgba(255, 255, 255, 0.78);
+                    background: color-mix(in srgb, var(--surface-container-lowest) 78%, transparent);
                     display: grid;
                     gap: 10px;
                 }
@@ -891,12 +969,30 @@ pub fn App() -> impl IntoView {
                 }
                 @media (max-width: 920px) {
                     .app-shell { padding: 16px; }
+                    .workspace-shell { gap: 14px; }
+                    .app-topbar {
+                        padding: 14px 16px;
+                        border-radius: 24px;
+                        align-items: flex-start;
+                    }
+                    .app-topbar-leading {
+                        width: 100%;
+                    }
+                    .app-topbar-actions {
+                        width: 100%;
+                        justify-content: flex-start;
+                    }
+                    .nav-fab {
+                        display: inline-flex;
+                        align-items: center;
+                        justify-content: center;
+                    }
                     .frame { display: block; }
                     .sidebar-backdrop {
                         display: block;
                         position: fixed;
                         inset: 0;
-                        background: rgba(23, 19, 15, 0.34);
+                        background: var(--scrim);
                         opacity: 0;
                         pointer-events: none;
                         transition: opacity 0.18s ease;
@@ -938,19 +1034,19 @@ pub fn App() -> impl IntoView {
                         justify-content: flex-start;
                         margin-bottom: 12px;
                     }
-                .sidebar-toggle,
+                    .sidebar-toggle,
                 .sidebar-close {
                         display: inline-flex;
                         align-items: center;
                         justify-content: center;
                         border-radius: 18px;
                         border: 1px solid var(--line);
-                        background: rgba(255, 248, 252, 0.96);
-                        color: var(--ink);
+                        background: color-mix(in srgb, var(--surface) 96%, transparent);
+                        color: var(--on-primary-container);
                         padding: 9px 14px;
                         font-size: 0.84rem;
                         font-weight: 700;
-                        box-shadow: 0 8px 18px rgba(79, 93, 146, 0.1);
+                        box-shadow: var(--elevation-2);
                     }
                     .sidebar-header {
                         grid-template-columns: 1fr auto;
@@ -982,6 +1078,16 @@ pub fn App() -> impl IntoView {
                 }
                 @media (max-width: 640px) {
                     .app-shell { padding: 12px; }
+                    .app-topbar {
+                        padding: 12px 14px;
+                        border-radius: 20px;
+                    }
+                    .app-topbar-copy h2 {
+                        font-size: 1.12rem;
+                    }
+                    .topbar-subtitle {
+                        font-size: 0.84rem;
+                    }
                     .panel { border-radius: 16px; }
                     .content { padding: 14px; }
                     .sidebar-header,
@@ -1131,6 +1237,27 @@ pub fn App() -> impl IntoView {
                         </div>
                     }.into_any(),
                     Some(_) => view! {
+            <div class="workspace-shell">
+            <section class="panel app-topbar">
+                <div class="app-topbar-leading">
+                    <button
+                        type="button"
+                        class="nav-fab"
+                        on:click=move |_| set_sidebar_open.update(|open| *open = !*open)
+                    >
+                        {move || if sidebar_open.get() { "Close" } else { "Threads" }}
+                    </button>
+                    <div class="app-topbar-copy">
+                        <p class="eyebrow">"Elowen Assistant"</p>
+                        <h2>"Chat-first orchestration"</h2>
+                        <p class="topbar-subtitle">"Material-aligned workspace shell with explicit handoff to laptop execution."</p>
+                    </div>
+                </div>
+                <div class="app-topbar-actions">
+                    <span class="topbar-chip">"Workflow #2 default"</span>
+                    <span class="topbar-chip">"Workflow #1 explicit"</span>
+                </div>
+            </section>
             <div class="frame">
                 <button
                     type="button"
@@ -2467,6 +2594,7 @@ pub fn App() -> impl IntoView {
                         }
                     }}
                 </section>
+            </div>
             </div>
                     }.into_any(),
                 }
