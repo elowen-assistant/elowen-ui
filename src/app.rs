@@ -295,15 +295,15 @@ pub fn App() -> impl IntoView {
                     max-width: 1320px;
                     margin: 0 auto;
                     display: grid;
-                    gap: 18px;
+                    gap: 12px;
                 }
                 .app-topbar {
                     display: flex;
                     align-items: center;
                     justify-content: space-between;
-                    gap: 16px;
-                    padding: 14px 18px;
-                    border-radius: var(--shape-xl);
+                    gap: 12px;
+                    padding: 10px 14px;
+                    border-radius: 22px;
                     min-width: 0;
                 }
                 .app-topbar-leading {
@@ -319,14 +319,14 @@ pub fn App() -> impl IntoView {
                 }
                 .app-topbar-copy h2 {
                     margin: 0;
-                    font-size: 1.35rem;
+                    font-size: 1.12rem;
                     line-height: 1.2;
                     letter-spacing: -0.02em;
                 }
                 .topbar-subtitle {
                     margin: 0;
                     color: var(--muted);
-                    font-size: 0.9rem;
+                    font-size: 0.82rem;
                 }
                 .app-topbar-actions {
                     display: flex;
@@ -339,11 +339,11 @@ pub fn App() -> impl IntoView {
                     display: inline-flex;
                     align-items: center;
                     border-radius: 999px;
-                    padding: 8px 12px;
+                    padding: 6px 10px;
                     background: var(--surface-container);
                     color: var(--muted);
                     border: 1px solid rgba(147, 143, 153, 0.24);
-                    font-size: 0.8rem;
+                    font-size: 0.74rem;
                     font-weight: 600;
                 }
                 .nav-fab {
@@ -362,6 +362,7 @@ pub fn App() -> impl IntoView {
                     gap: 18px;
                     align-items: start;
                     position: relative;
+                    min-height: calc(100vh - 108px);
                 }
                 .panel {
                     background: color-mix(in srgb, var(--surface) 92%, transparent);
@@ -380,6 +381,9 @@ pub fn App() -> impl IntoView {
                 .sidebar { padding: 18px; display: flex; flex-direction: column; gap: 16px; }
                 .content { padding: 20px; min-height: 70vh; min-width: 0; overflow-x: hidden; background: color-mix(in srgb, var(--surface-container-lowest) 76%, transparent); }
                 .content-toolbar { display: none; }
+                .thread-mobile-meta {
+                    display: none;
+                }
                 .auth-shell {
                     min-height: calc(100vh - 48px);
                     display: grid;
@@ -414,14 +418,14 @@ pub fn App() -> impl IntoView {
                 }
                 .sidebar-header {
                     display: grid;
-                    gap: 10px;
+                    gap: 8px;
                 }
                 .sidebar-status {
                     display: grid;
-                    gap: 6px;
-                    padding: 12px 14px;
+                    gap: 4px;
+                    padding: 10px 12px;
                     border: 1px solid rgba(92, 95, 190, 0.12);
-                    border-radius: 22px;
+                    border-radius: 18px;
                     background: color-mix(in srgb, var(--primary-container) 74%, var(--surface));
                 }
                 .sidebar-status .status {
@@ -436,7 +440,7 @@ pub fn App() -> impl IntoView {
                     margin: 0 0 8px 0;
                 }
                 h1, h2, h3, p { margin-top: 0; }
-                h1 { font-size: 2.15rem; margin-bottom: 6px; font-weight: 700; letter-spacing: -0.02em; }
+                h1 { font-size: 1.65rem; margin-bottom: 4px; font-weight: 700; letter-spacing: -0.02em; }
                 .status { color: var(--muted); font-size: 0.95rem; margin-bottom: 18px; }
                 .status-row {
                     display: flex;
@@ -1006,7 +1010,7 @@ pub fn App() -> impl IntoView {
                     .context-shell {
                         grid-area: context;
                         position: sticky;
-                        top: 106px;
+                        top: 82px;
                         max-height: calc(100vh - 136px);
                         overflow-y: auto;
                         padding-right: 2px;
@@ -1016,16 +1020,19 @@ pub fn App() -> impl IntoView {
                     .app-shell { padding: 16px; }
                     .workspace-shell { gap: 14px; }
                     .app-topbar {
-                        padding: 14px 16px;
-                        border-radius: 24px;
-                        align-items: flex-start;
+                        padding: 12px 14px;
+                        border-radius: 20px;
+                        align-items: center;
                     }
                     .app-topbar-leading {
                         width: 100%;
+                        gap: 10px;
                     }
                     .app-topbar-actions {
-                        width: 100%;
-                        justify-content: flex-start;
+                        display: none;
+                    }
+                    .topbar-subtitle {
+                        display: none;
                     }
                     .nav-fab {
                         display: inline-flex;
@@ -1072,12 +1079,14 @@ pub fn App() -> impl IntoView {
                     }
                     .content {
                         order: 1;
-                        padding: 18px;
+                        padding: 14px;
                     }
                     .content-toolbar {
                         display: flex;
-                        justify-content: flex-start;
-                        margin-bottom: 12px;
+                        justify-content: space-between;
+                        align-items: center;
+                        gap: 10px;
+                        margin-bottom: 10px;
                     }
                     .sidebar-toggle,
                 .sidebar-close {
@@ -1097,19 +1106,67 @@ pub fn App() -> impl IntoView {
                         grid-template-columns: 1fr auto;
                         align-items: start;
                     }
-                    .thread-hero { padding: 14px; border-radius: 18px; }
-                    .thread-hero h2 { font-size: 1.35rem; }
+                    .thread-focus {
+                        gap: 10px;
+                    }
+                    .thread-hero {
+                        order: 1;
+                        padding: 10px 12px;
+                        border-radius: 18px;
+                        gap: 6px;
+                    }
+                    .thread-hero-header {
+                        align-items: center;
+                        gap: 8px;
+                    }
+                    .thread-hero h2 {
+                        font-size: 1.12rem;
+                    }
+                    .thread-hero .eyebrow,
+                    .thread-hero .status,
+                    .thread-summary-row {
+                        display: none;
+                    }
+                    .thread-mobile-meta {
+                        display: flex;
+                        align-items: center;
+                        gap: 8px;
+                        flex-wrap: wrap;
+                        color: var(--muted);
+                        font-size: 0.76rem;
+                    }
+                    .thread-mobile-meta strong {
+                        color: var(--ink);
+                        font-size: 0.78rem;
+                    }
+                    .thread-primary {
+                        order: 2;
+                        min-height: calc(100vh - 172px);
+                    }
+                    .context-shell {
+                        order: 3;
+                        gap: 10px;
+                    }
                     .context-panel summary { padding: 10px 12px; }
                     .context-panel-body { padding: 10px 12px 12px 12px; }
                     .thread-composer {
-                        margin-top: 14px;
-                        padding: 12px;
+                        margin-top: 8px;
+                        padding: 10px 12px;
                         bottom: 12px;
                         box-shadow: 0 10px 22px rgba(40, 34, 28, 0.08);
                     }
+                    .composer-header {
+                        gap: 6px;
+                    }
+                    .composer-header strong {
+                        font-size: 0.84rem;
+                    }
+                    .composer-quick-actions {
+                        display: none;
+                    }
                     .message-pane {
-                        max-height: calc(100vh - 240px);
-                        padding-bottom: 96px;
+                        max-height: calc(100vh - 176px);
+                        padding-bottom: 88px;
                     }
                     .dispatch-grid { grid-template-columns: 1fr; }
                     .composer-actions,
@@ -1128,10 +1185,7 @@ pub fn App() -> impl IntoView {
                         border-radius: 20px;
                     }
                     .app-topbar-copy h2 {
-                        font-size: 1.12rem;
-                    }
-                    .topbar-subtitle {
-                        font-size: 0.84rem;
+                        font-size: 1rem;
                     }
                     .panel { border-radius: 16px; }
                     .content { padding: 12px; }
@@ -1139,8 +1193,10 @@ pub fn App() -> impl IntoView {
                     .thread-focus,
                     .thread-primary,
                     .context-shell { gap: 12px; }
-                    .thread-hero { gap: 12px; }
-                    .thread-summary-row { gap: 8px; }
+                    .thread-hero {
+                        padding: 10px 12px;
+                        gap: 6px;
+                    }
                     .thread-pill {
                         width: 100%;
                         justify-content: flex-start;
@@ -1168,8 +1224,8 @@ pub fn App() -> impl IntoView {
                         min-height: 72px;
                     }
                     .message-pane {
-                        max-height: calc(100vh - 208px);
-                        padding-bottom: 88px;
+                        max-height: calc(100vh - 168px);
+                        padding-bottom: 82px;
                     }
                     .composer-actions > button,
                     .composer-dispatch-actions > button {
@@ -1295,12 +1351,12 @@ pub fn App() -> impl IntoView {
                     <div class="app-topbar-copy">
                         <p class="eyebrow">"Elowen Assistant"</p>
                         <h2>"Chat-first orchestration"</h2>
-                        <p class="topbar-subtitle">"Material-aligned workspace shell with explicit handoff to laptop execution."</p>
+                        <p class="topbar-subtitle">"Threads, chat, and explicit laptop handoff."</p>
                     </div>
                 </div>
                 <div class="app-topbar-actions">
-                    <span class="topbar-chip">"Workflow #2 default"</span>
-                    <span class="topbar-chip">"Workflow #1 explicit"</span>
+                    <span class="topbar-chip">"Chat default"</span>
+                    <span class="topbar-chip">"Laptop explicit"</span>
                 </div>
             </section>
             <div class="frame">
@@ -1542,6 +1598,7 @@ pub fn App() -> impl IntoView {
                         >
                             {move || if sidebar_open.get() { "Hide Threads" } else { "Show Threads" }}
                         </button>
+                        <span class="topbar-chip">"Chat view"</span>
                     </div>
                     {move || {
                         if let Some(thread) = selected_thread.get() {
@@ -1565,6 +1622,11 @@ pub fn App() -> impl IntoView {
                                                 <p class="eyebrow">"Conversation"</p>
                                                 <h2>{thread_record.title.clone()}</h2>
                                                 <p class="status">"Chat stays primary. Job context lives in the side panels."</p>
+                                                <div class="thread-mobile-meta">
+                                                    <strong>{format!("{} messages", messages.len())}</strong>
+                                                    <span>{format!("{} jobs", jobs.len())}</span>
+                                                    <span>{format!("Updated {}", thread_record.updated_at.clone())}</span>
+                                                </div>
                                             </div>
                                             <span class=format!(
                                                 "status-badge {}",
