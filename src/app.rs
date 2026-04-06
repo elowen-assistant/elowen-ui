@@ -411,7 +411,6 @@ pub fn App() -> impl IntoView {
                     overflow: hidden;
                     background: color-mix(in srgb, var(--surface-container-lowest) 76%, transparent);
                     position: relative;
-                    z-index: 1;
                 }
                 .content-toolbar { display: none; }
                 .thread-mobile-meta {
