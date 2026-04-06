@@ -722,6 +722,38 @@ pub fn App() -> impl IntoView {
                     font-size: 0.8rem;
                 }
                 .job-meta { flex-wrap: wrap; justify-content: flex-start; gap: 10px 16px; }
+                .job-browser {
+                    height: 100%;
+                    min-height: 0;
+                    display: grid;
+                    grid-template-rows: auto minmax(0, 1fr);
+                    gap: 14px;
+                }
+                .job-browser-header {
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    gap: 14px;
+                    flex-wrap: wrap;
+                    padding: 12px 14px;
+                    border: 1px solid var(--line);
+                    border-radius: 22px;
+                    background: color-mix(in srgb, var(--surface-container-low) 88%, transparent);
+                    box-shadow: var(--elevation-1);
+                }
+                .job-browser-header h2 {
+                    margin: 0;
+                    font-size: 1.35rem;
+                    line-height: 1.15;
+                }
+                .job-browser-grid {
+                    min-height: 0;
+                    overflow-y: auto;
+                    display: grid;
+                    align-content: start;
+                    gap: 12px;
+                    padding-right: 4px;
+                }
                 .job-detail { background: color-mix(in srgb, var(--surface-container-lowest) 78%, transparent); margin: 0 0 24px 0; }
                 .job-overview {
                     display: grid;
@@ -1857,7 +1889,84 @@ pub fn App() -> impl IntoView {
                         }}
                     </div>
                     {move || {
-                        if let Some(thread) = selected_thread.get() {
+                        if nav_mode.get() == NavMode::Jobs {
+                            let global_jobs = jobs.get();
+                            view! {
+                                <section class="job-browser" data-testid="job-browser">
+                                    <div class="job-browser-header">
+                                        <div>
+                                            <p class="eyebrow">"Jobs"</p>
+                                            <h2>"Job history"</h2>
+                                        </div>
+                                        <span class="thread-pill">{format!("{} jobs", global_jobs.len())}</span>
+                                    </div>
+                                    <div class="job-browser-grid">
+                                        <For
+                                            each=move || jobs.get()
+                                            key=|job| job.id.clone()
+                                            children=move |job| {
+                                                let active_job_id = job.id.clone();
+                                                let click_job_id = job.id.clone();
+                                                let click_thread_id = job.thread_id.clone();
+                                                let thread_label = if job.thread_id.len() > 8 {
+                                                    job.thread_id[..8].to_string()
+                                                } else {
+                                                    job.thread_id.clone()
+                                                };
+                                                view! {
+                                                    <article
+                                                        class=("job-card", true)
+                                                        class:active=move || selected_job_id.get() == Some(active_job_id.clone())
+                                                        on:click=move |_| {
+                                                            set_preferred_job_id.set(Some(click_job_id.clone()));
+                                                            set_selected_job_id.set(Some(click_job_id.clone()));
+                                                            set_selected_thread_id.set(Some(click_thread_id.clone()));
+                                                            set_nav_mode.set(NavMode::Chats);
+                                                            set_context_open.set(true);
+                                                            if is_compact_layout() {
+                                                                set_sidebar_open.set(false);
+                                                            }
+                                                        }
+                                                    >
+                                                        <header>
+                                                            <div>
+                                                                <h3>{job.title.clone()}</h3>
+                                                                <div class="status-row">
+                                                                    <span class=format!(
+                                                                        "status-badge {}",
+                                                                        status_badge_class(&job.status)
+                                                                    )>
+                                                                        {job.status.clone()}
+                                                                    </span>
+                                                                    <span class="status">{job.short_id.clone()}</span>
+                                                                </div>
+                                                            </div>
+                                                            <strong>{job.repo_name.clone()}</strong>
+                                                        </header>
+                                                        <div class="job-meta">
+                                                            <span>{format!("Thread: {}", thread_label)}</span>
+                                                            <span>{format!("Updated: {}", job.updated_at.clone())}</span>
+                                                        </div>
+                                                    </article>
+                                                }
+                                            }
+                                        />
+                                        {move || {
+                                            if jobs.get().is_empty() {
+                                                view! {
+                                                    <div class="empty">
+                                                        <p class="eyebrow">"No Jobs Yet"</p>
+                                                        <p>"Jobs will appear here after a conversation is explicitly handed off to the laptop edge."</p>
+                                                    </div>
+                                                }.into_any()
+                                            } else {
+                                                ().into_any()
+                                            }
+                                        }}
+                                    </div>
+                                </section>
+                            }.into_any()
+                        } else if let Some(thread) = selected_thread.get() {
                             let thread_id = thread.thread.id.clone();
                             let job_thread_id = thread_id.clone();
                             let message_actions_thread_id = thread_id.clone();
