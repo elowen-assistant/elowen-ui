@@ -33,6 +33,15 @@ pub(crate) struct MessageRecord {
     pub(crate) created_at: String,
 }
 
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+pub(crate) struct UiEvent {
+    pub(crate) event_type: String,
+    pub(crate) thread_id: Option<String>,
+    pub(crate) job_id: Option<String>,
+    pub(crate) device_id: Option<String>,
+    pub(crate) created_at: String,
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum ExecutionIntent {

@@ -25,6 +25,10 @@ fn auth_url(path: &str) -> String {
     format!("{}/auth/{path}", api_base())
 }
 
+pub(crate) fn events_url() -> String {
+    format!("{}/events", api_base())
+}
+
 pub(crate) async fn fetch_threads() -> Result<Vec<ThreadSummary>, String> {
     decode_json(
         with_credentials(Request::get(&format!("{}/threads", api_base())))

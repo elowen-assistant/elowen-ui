@@ -1,12 +1,13 @@
 use gloo_timers::future::TimeoutFuture;
 use leptos::{ev, html, prelude::*, task::spawn_local};
-use wasm_bindgen::JsCast;
+use wasm_bindgen::{JsCast, closure::Closure};
+use web_sys::{Event, EventSource, MessageEvent};
 
 use crate::{
     api::{
-        create_job, create_thread, dispatch_thread_message, fetch_auth_session, fetch_job,
-        fetch_jobs, fetch_thread, fetch_threads, login as login_session, logout as logout_session,
-        promote_job_note, resolve_approval, send_thread_chat_message,
+        create_job, create_thread, dispatch_thread_message, events_url, fetch_auth_session,
+        fetch_job, fetch_jobs, fetch_thread, fetch_threads, login as login_session,
+        logout as logout_session, promote_job_note, resolve_approval, send_thread_chat_message,
     },
     format::{
         approval_status_note, execution_intent_label, format_json_value, format_string_list,
@@ -42,11 +43,25 @@ impl NavMode {
     }
 }
 
+#[derive(Clone, Copy)]
+struct UiEventSyncHandles {
+    selected_thread_id: ReadSignal<Option<String>>,
+    selected_job_id: ReadSignal<Option<String>>,
+    set_threads: WriteSignal<Vec<ThreadSummary>>,
+    set_selected_thread_id: WriteSignal<Option<String>>,
+    set_selected_thread: WriteSignal<Option<ThreadDetail>>,
+    set_jobs: WriteSignal<Vec<JobRecord>>,
+    set_selected_job_detail: WriteSignal<Option<JobDetail>>,
+    set_auth_session: WriteSignal<Option<AuthSessionStatus>>,
+    set_status_text: WriteSignal<String>,
+}
+
 const STORAGE_SELECTED_THREAD_ID: &str = "elowen.selected_thread_id";
 const STORAGE_SELECTED_JOB_ID: &str = "elowen.selected_job_id";
 const STORAGE_CONTEXT_OPEN: &str = "elowen.context_open";
 const STORAGE_NAV_MODE: &str = "elowen.nav_mode";
 const STORAGE_COMPOSER_TEXT: &str = "elowen.composer_text";
+const POLL_FALLBACK_MS: u32 = 30_000;
 
 #[component]
 pub fn App() -> impl IntoView {
@@ -79,6 +94,7 @@ pub fn App() -> impl IntoView {
     let (new_job_request_text, set_new_job_request_text) = signal(String::new());
     let (status_text, set_status_text) = signal(String::from("Loading threads and jobs..."));
     let (message_pane_pinned, set_message_pane_pinned) = signal(true);
+    let (event_stream_connected, set_event_stream_connected) = signal(false);
     let message_pane_ref = NodeRef::<html::Div>::new();
 
     spawn_local(async move {
@@ -119,7 +135,7 @@ pub fn App() -> impl IntoView {
         }
 
         loop {
-            TimeoutFuture::new(5_000).await;
+            TimeoutFuture::new(POLL_FALLBACK_MS).await;
 
             let can_access = auth_session
                 .get_untracked()
@@ -206,6 +222,28 @@ pub fn App() -> impl IntoView {
                 }
                 set_status_text.set(format!("Failed to refresh job: {error}"));
             }
+        }
+    });
+
+    Effect::new(move |_| {
+        let can_access = auth_session
+            .get()
+            .map(|session| !session.enabled || session.authenticated)
+            .unwrap_or(false);
+
+        if can_access && !event_stream_connected.get_untracked() {
+            set_event_stream_connected.set(true);
+            connect_ui_event_stream(UiEventSyncHandles {
+                selected_thread_id,
+                selected_job_id,
+                set_threads,
+                set_selected_thread_id,
+                set_selected_thread,
+                set_jobs,
+                set_selected_job_detail,
+                set_auth_session,
+                set_status_text,
+            });
         }
     });
 
@@ -3131,6 +3169,96 @@ pub fn App() -> impl IntoView {
             }}
         </main>
     }
+}
+
+fn connect_ui_event_stream(handles: UiEventSyncHandles) {
+    let Ok(source) = EventSource::new(&events_url()) else {
+        handles
+            .set_status_text
+            .set("Realtime stream unavailable. Polling fallback remains active.".to_string());
+        return;
+    };
+
+    let on_message =
+        Closure::<dyn FnMut(MessageEvent)>::wrap(Box::new(move |message: MessageEvent| {
+            let Some(data) = message.data().as_string() else {
+                return;
+            };
+            let Ok(ui_event) = serde_json::from_str::<UiEvent>(&data) else {
+                return;
+            };
+
+            spawn_local(async move {
+                if let Err(error) = refresh_for_ui_event(ui_event, handles).await {
+                    if is_auth_error(&error) {
+                        handles.set_auth_session.set(Some(AuthSessionStatus {
+                            enabled: true,
+                            authenticated: false,
+                            operator_label: None,
+                        }));
+                        handles.set_selected_thread.set(None);
+                        handles.set_selected_job_detail.set(None);
+                        handles
+                            .set_status_text
+                            .set("Session expired. Sign in again.".to_string());
+                    } else {
+                        handles
+                            .set_status_text
+                            .set(format!("Failed to process realtime update: {error}"));
+                    }
+                }
+            });
+        }));
+    source.set_onmessage(Some(on_message.as_ref().unchecked_ref()));
+    on_message.forget();
+
+    let on_error = Closure::<dyn FnMut(Event)>::wrap(Box::new(move |_| {
+        handles
+            .set_status_text
+            .set("Realtime stream unavailable. Polling fallback remains active.".to_string());
+    }));
+    source.set_onerror(Some(on_error.as_ref().unchecked_ref()));
+    on_error.forget();
+
+    std::mem::forget(source);
+}
+
+async fn refresh_for_ui_event(event: UiEvent, handles: UiEventSyncHandles) -> Result<(), String> {
+    sync_thread_list(
+        handles.set_threads,
+        handles.selected_thread_id,
+        handles.set_selected_thread_id,
+        handles.set_status_text,
+    )
+    .await?;
+
+    if matches!(event.event_type.as_str(), "job.changed" | "device.changed") {
+        sync_job_list(handles.set_jobs).await?;
+    }
+
+    if event.thread_id.as_ref() == handles.selected_thread_id.get_untracked().as_ref()
+        && let Some(thread_id) = event.thread_id
+    {
+        sync_selected_thread(
+            thread_id,
+            handles.set_selected_thread,
+            handles.set_status_text,
+        )
+        .await?;
+    }
+
+    if event.job_id.as_ref() == handles.selected_job_id.get_untracked().as_ref()
+        && let Some(job_id) = event.job_id
+    {
+        sync_selected_job(
+            job_id,
+            handles.set_selected_job_detail,
+            handles.set_status_text,
+        )
+        .await?;
+    }
+
+    Ok(())
 }
 
 async fn sync_thread_list(
