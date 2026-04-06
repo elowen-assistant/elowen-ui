@@ -3173,7 +3173,11 @@ async fn sync_selected_thread(
     set_status_text: WriteSignal<String>,
 ) -> Result<(), String> {
     let thread = fetch_thread(&thread_id).await?;
-    set_selected_thread.set(Some(thread));
+    set_selected_thread.update(|current| {
+        if current.as_ref() != Some(&thread) {
+            *current = Some(thread);
+        }
+    });
     set_status_text.set("Thread detail loaded.".to_string());
     Ok(())
 }
@@ -3184,7 +3188,11 @@ async fn sync_selected_job(
     set_status_text: WriteSignal<String>,
 ) -> Result<(), String> {
     let job = fetch_job(&job_id).await?;
-    set_selected_job_detail.set(Some(job));
+    set_selected_job_detail.update(|current| {
+        if current.as_ref() != Some(&job) {
+            *current = Some(job);
+        }
+    });
     set_status_text.set("Job detail loaded.".to_string());
     Ok(())
 }
