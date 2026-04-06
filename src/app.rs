@@ -954,8 +954,11 @@ pub fn App() -> impl IntoView {
                     min-height: 0;
                     height: 100%;
                     overflow-y: auto;
-                    padding: 2px 4px 16px 0;
+                    padding: 2px 4px 24px 0;
                     scroll-behavior: smooth;
+                }
+                .message-list {
+                    padding-bottom: 18px;
                 }
                 .context-shell {
                     display: grid;
@@ -1420,7 +1423,7 @@ pub fn App() -> impl IntoView {
                     }
                     .message-pane {
                         height: 100%;
-                        padding-bottom: 12px;
+                        padding-bottom: 24px;
                     }
                 }
                 @media (max-width: 640px) {
@@ -1471,7 +1474,7 @@ pub fn App() -> impl IntoView {
                     .thread-composer textarea { min-height: 70px; }
                     .message-pane {
                         height: 100%;
-                        padding-bottom: 10px;
+                        padding-bottom: 22px;
                     }
                     .context-shell {
                         left: 10px;
