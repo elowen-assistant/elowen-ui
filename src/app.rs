@@ -312,6 +312,7 @@ pub fn App() -> impl IntoView {
                     margin: 0 auto;
                     display: grid;
                     gap: 12px;
+                    min-height: calc(100vh - 48px);
                 }
                 .app-topbar {
                     display: flex;
@@ -384,6 +385,7 @@ pub fn App() -> impl IntoView {
                     gap: 18px;
                     align-items: start;
                     position: relative;
+                    height: calc(100vh - 108px);
                     min-height: calc(100vh - 108px);
                 }
                 .panel {
@@ -401,7 +403,16 @@ pub fn App() -> impl IntoView {
                     display: none;
                 }
                 .sidebar { padding: 18px; display: flex; flex-direction: column; gap: 16px; }
-                .content { padding: 20px; min-height: 70vh; min-width: 0; overflow-x: hidden; background: color-mix(in srgb, var(--surface-container-lowest) 76%, transparent); position: relative; z-index: 1; }
+                .content {
+                    padding: 20px;
+                    min-height: 70vh;
+                    min-width: 0;
+                    height: 100%;
+                    overflow: hidden;
+                    background: color-mix(in srgb, var(--surface-container-lowest) 76%, transparent);
+                    position: relative;
+                    z-index: 1;
+                }
                 .content-toolbar { display: none; }
                 .thread-mobile-meta {
                     display: none;
@@ -722,6 +733,8 @@ pub fn App() -> impl IntoView {
                     display: grid;
                     gap: 12px;
                     min-height: 0;
+                    height: 100%;
+                    grid-template-rows: auto minmax(0, 1fr);
                 }
                 .thread-hero {
                     display: grid;
@@ -769,15 +782,16 @@ pub fn App() -> impl IntoView {
                 .thread-primary {
                     display: grid;
                     gap: 10px;
-                    min-height: calc(100vh - 228px);
+                    min-height: 0;
+                    height: 100%;
                     grid-template-rows: minmax(0, 1fr) auto;
                     align-self: stretch;
                 }
                 .message-pane {
                     min-height: 0;
-                    max-height: calc(100vh - 284px);
+                    height: 100%;
                     overflow-y: auto;
-                    padding: 2px 4px 88px 0;
+                    padding: 2px 4px 16px 0;
                     scroll-behavior: smooth;
                 }
                 .context-shell {
@@ -888,7 +902,7 @@ pub fn App() -> impl IntoView {
                     display: grid;
                     gap: 8px;
                     position: sticky;
-                    bottom: 14px;
+                    bottom: 0;
                     box-shadow: var(--elevation-3);
                     z-index: 2;
                 }
@@ -997,6 +1011,7 @@ pub fn App() -> impl IntoView {
                         grid-template-areas:
                             "hero hero"
                             "chat context";
+                        grid-template-rows: auto minmax(0, 1fr);
                         align-items: start;
                     }
                     .thread-hero {
@@ -1004,10 +1019,10 @@ pub fn App() -> impl IntoView {
                     }
                     .thread-primary {
                         grid-area: chat;
-                        min-height: calc(100vh - 212px);
+                        min-height: 0;
                     }
                     .message-pane {
-                        max-height: calc(100vh - 252px);
+                        height: 100%;
                     }
                     .context-shell {
                         grid-area: context;
@@ -1041,7 +1056,11 @@ pub fn App() -> impl IntoView {
                         align-items: center;
                         justify-content: center;
                     }
-                    .frame { display: block; }
+                    .frame {
+                        display: block;
+                        height: calc(100vh - 112px);
+                        min-height: calc(100vh - 112px);
+                    }
                     .sidebar-backdrop {
                         display: block;
                         position: fixed;
@@ -1082,6 +1101,7 @@ pub fn App() -> impl IntoView {
                     .content {
                         order: 1;
                         padding: 14px;
+                        height: 100%;
                     }
                     .content-toolbar {
                         display: flex;
@@ -1148,7 +1168,7 @@ pub fn App() -> impl IntoView {
                     }
                     .thread-primary {
                         order: 2;
-                        min-height: calc(100vh - 172px);
+                        min-height: 0;
                     }
                     .context-shell {
                         position: fixed;
@@ -1203,7 +1223,7 @@ pub fn App() -> impl IntoView {
                     .thread-composer {
                         margin-top: 8px;
                         padding: 10px 12px;
-                        bottom: 12px;
+                        bottom: 0;
                         box-shadow: 0 10px 22px rgba(40, 34, 28, 0.08);
                     }
                     .composer-input-wrap textarea {
@@ -1219,8 +1239,8 @@ pub fn App() -> impl IntoView {
                         bottom: 10px;
                     }
                     .message-pane {
-                        max-height: calc(100vh - 176px);
-                        padding-bottom: 88px;
+                        height: 100%;
+                        padding-bottom: 12px;
                     }
                 }
                 @media (max-width: 640px) {
@@ -1233,7 +1253,10 @@ pub fn App() -> impl IntoView {
                         font-size: 1rem;
                     }
                     .panel { border-radius: 16px; }
-                    .content { padding: 12px; }
+                    .content {
+                        padding: 12px;
+                        height: 100%;
+                    }
                     .sidebar-header,
                     .thread-focus,
                     .thread-primary,
@@ -1267,8 +1290,8 @@ pub fn App() -> impl IntoView {
                     }
                     .thread-composer textarea { min-height: 70px; }
                     .message-pane {
-                        max-height: calc(100vh - 168px);
-                        padding-bottom: 82px;
+                        height: 100%;
+                        padding-bottom: 10px;
                     }
                     .context-shell {
                         left: 10px;
