@@ -381,8 +381,8 @@ pub fn App() -> impl IntoView {
                 }
                 .frame {
                     display: grid;
-                    grid-template-columns: 308px 1fr;
-                    gap: 18px;
+                    grid-template-columns: 84px 308px 1fr;
+                    gap: 14px;
                     align-items: start;
                     position: relative;
                     height: calc(100vh - 108px);
@@ -413,6 +413,72 @@ pub fn App() -> impl IntoView {
                     position: relative;
                 }
                 .content-toolbar { display: none; }
+                .nav-rail {
+                    height: 100%;
+                    min-width: 0;
+                    padding: 14px 8px;
+                    border-radius: 32px;
+                    display: flex;
+                    flex-direction: column;
+                    align-items: center;
+                    gap: 12px;
+                    background: color-mix(in srgb, var(--surface-container-low) 86%, transparent);
+                }
+                .nav-rail-brand {
+                    width: 48px;
+                    height: 48px;
+                    border-radius: 18px;
+                    display: inline-flex;
+                    align-items: center;
+                    justify-content: center;
+                    background: var(--primary-container);
+                    color: var(--on-primary-container);
+                    box-shadow: var(--elevation-1);
+                }
+                .nav-rail-items {
+                    display: grid;
+                    gap: 10px;
+                    width: 100%;
+                }
+                .nav-rail-spacer { flex: 1; }
+                .nav-rail-item {
+                    width: 100%;
+                    min-height: 64px;
+                    padding: 6px 4px;
+                    border-radius: 20px;
+                    background: transparent;
+                    color: var(--muted);
+                    box-shadow: none;
+                    display: grid;
+                    justify-items: center;
+                    align-content: center;
+                    gap: 4px;
+                    font-size: 0.68rem;
+                    font-weight: 700;
+                    letter-spacing: 0;
+                }
+                .nav-rail-item .material-symbols-rounded {
+                    width: 44px;
+                    height: 32px;
+                    border-radius: 999px;
+                    display: inline-flex;
+                    align-items: center;
+                    justify-content: center;
+                    font-size: 22px;
+                }
+                .nav-rail-item.active {
+                    color: var(--on-primary-container);
+                }
+                .nav-rail-item.active .material-symbols-rounded {
+                    background: var(--primary-container);
+                    color: var(--on-primary-container);
+                    font-variation-settings: "FILL" 1, "wght" 600, "GRAD" 0, "opsz" 24;
+                }
+                .nav-rail-item:hover {
+                    transform: none;
+                    box-shadow: none;
+                    background: color-mix(in srgb, var(--surface-container-high) 74%, transparent);
+                }
                 .thread-mobile-meta {
                     display: none;
                 }
@@ -1071,6 +1137,9 @@ pub fn App() -> impl IntoView {
                     .app-topbar-actions {
                         display: none;
                     }
+                    .nav-rail {
+                        display: none;
+                    }
                     .topbar-subtitle {
                         display: none;
                     }
@@ -1498,6 +1567,42 @@ pub fn App() -> impl IntoView {
                 </div>
             </section>
             <div class="frame">
+                <nav class="panel nav-rail" aria-label="Primary navigation">
+                    <div class="nav-rail-brand" aria-hidden="true">
+                        <span class="material-symbols-rounded">"auto_awesome"</span>
+                    </div>
+                    <div class="nav-rail-items">
+                        <button
+                            type="button"
+                            class="nav-rail-item active"
+                            on:click=move |_| set_sidebar_open.set(true)
+                        >
+                            <span class="material-symbols-rounded" aria-hidden="true">"chat"</span>
+                            <span>"Chats"</span>
+                        </button>
+                        <button
+                            type="button"
+                            class="nav-rail-item"
+                            class:active=move || context_open.get()
+                            on:click=move |_| set_context_open.update(|open| *open = !*open)
+                        >
+                            <span class="material-symbols-rounded" aria-hidden="true">"info"</span>
+                            <span>"Details"</span>
+                        </button>
+                        <button
+                            type="button"
+                            class="nav-rail-item"
+                            on:click=move |_| {
+                                set_sidebar_open.set(true);
+                                set_status_text.set("Job history is available from the Jobs panel.".to_string());
+                            }
+                        >
+                            <span class="material-symbols-rounded" aria-hidden="true">"work_history"</span>
+                            <span>"Jobs"</span>
+                        </button>
+                    </div>
+                    <div class="nav-rail-spacer"></div>
+                </nav>
                 <button
                     type="button"
                     class="sidebar-backdrop"
