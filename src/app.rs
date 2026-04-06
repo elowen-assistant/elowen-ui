@@ -304,6 +304,10 @@ pub fn App() -> impl IntoView {
                     -webkit-font-smoothing: antialiased;
                     font-variation-settings: "FILL" 0, "wght" 500, "GRAD" 0, "opsz" 24;
                 }
+                html, body {
+                    height: 100%;
+                    overflow: hidden;
+                }
                 body {
                     margin: 0;
                     background:
@@ -312,15 +316,20 @@ pub fn App() -> impl IntoView {
                         linear-gradient(180deg, var(--bg) 0%, var(--bg-alt) 100%);
                     color: var(--ink);
                     font-family: "Segoe UI Variable Text", "Segoe UI", "Roboto", "Noto Sans", system-ui, sans-serif;
-                    overflow-x: hidden;
                 }
-                .app-shell { min-height: 100vh; padding: 24px; overflow-x: hidden; }
+                .app-shell {
+                    height: 100dvh;
+                    padding: 24px;
+                    overflow: hidden;
+                }
                 .workspace-shell {
                     max-width: 1320px;
                     margin: 0 auto;
                     display: grid;
+                    grid-template-rows: auto minmax(0, 1fr);
                     gap: 12px;
-                    min-height: calc(100vh - 48px);
+                    height: calc(100dvh - 48px);
+                    min-height: 0;
                 }
                 .app-topbar {
                     display: flex;
@@ -393,9 +402,9 @@ pub fn App() -> impl IntoView {
                     gap: 14px;
                     align-items: stretch;
                     position: relative;
-                    height: calc(100vh - 108px);
-                    min-height: calc(100vh - 108px);
-                    max-height: calc(100vh - 108px);
+                    height: 100%;
+                    min-height: 0;
+                    max-height: 100%;
                 }
                 .panel {
                     background: color-mix(in srgb, var(--surface) 92%, transparent);
@@ -1225,8 +1234,9 @@ pub fn App() -> impl IntoView {
                     }
                     .frame {
                         display: block;
-                        height: calc(100vh - 112px);
-                        min-height: calc(100vh - 112px);
+                        height: 100%;
+                        min-height: 0;
+                        max-height: 100%;
                     }
                     .sidebar-backdrop {
                         display: block;
