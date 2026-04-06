@@ -245,6 +245,7 @@ pub fn App() -> impl IntoView {
         <main class="app-shell">
             <style>
                 {r#"
+                @import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,500,0,0');
                 :root {
                     --bg: #f9f4fb;
                     --bg-alt: #f2ecf4;
@@ -280,6 +281,21 @@ pub fn App() -> impl IntoView {
                     --accent-soft: var(--primary-container);
                 }
                 * { box-sizing: border-box; }
+                .material-symbols-rounded {
+                    font-family: "Material Symbols Rounded";
+                    font-weight: normal;
+                    font-style: normal;
+                    font-size: 24px;
+                    line-height: 1;
+                    letter-spacing: normal;
+                    text-transform: none;
+                    display: inline-block;
+                    white-space: nowrap;
+                    word-wrap: normal;
+                    direction: ltr;
+                    -webkit-font-smoothing: antialiased;
+                    font-variation-settings: "FILL" 0, "wght" 500, "GRAD" 0, "opsz" 24;
+                }
                 body {
                     margin: 0;
                     background:
@@ -902,6 +918,9 @@ pub fn App() -> impl IntoView {
                     line-height: 1;
                     background: var(--accent);
                     box-shadow: var(--elevation-2);
+                }
+                .composer-send .material-symbols-rounded {
+                    font-size: 22px;
                 }
                 .result-message {
                     border: 1px solid #b8d3c7;
@@ -2624,7 +2643,9 @@ pub fn App() -> impl IntoView {
                                                 prop:value=move || new_message_content.get()
                                                 on:input=move |ev| set_new_message_content.set(event_target_value(&ev))
                                             />
-                                            <button type="submit" class="composer-send" aria-label="Send message">"^"</button>
+                                            <button type="submit" class="composer-send" aria-label="Send message">
+                                                <span class="material-symbols-rounded" aria-hidden="true">"arrow_circle_up"</span>
+                                            </button>
                                         </div>
                                     </form>
                                     </div>
