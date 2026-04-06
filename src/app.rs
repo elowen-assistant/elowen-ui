@@ -1477,12 +1477,6 @@ pub fn App() -> impl IntoView {
                     class:open=move || sidebar_open.get()
                     on:click=move |_| set_sidebar_open.set(false)
                 ></button>
-                <button
-                    type="button"
-                    class="context-backdrop"
-                    class:open=move || context_open.get()
-                    on:click=move |_| set_context_open.set(false)
-                ></button>
                 <div class="sidebar-shell" class:open=move || sidebar_open.get()>
                 <section class="panel sidebar">
                     <div class="sidebar-header">
@@ -1665,6 +1659,12 @@ pub fn App() -> impl IntoView {
                 </section>
                 </div>
                 <section class="panel content">
+                    <button
+                        type="button"
+                        class="context-backdrop"
+                        class:open=move || context_open.get()
+                        on:click=move |_| set_context_open.set(false)
+                    ></button>
                     <div class="content-toolbar">
                         <button
                             type="button"
