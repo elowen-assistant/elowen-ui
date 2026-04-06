@@ -22,6 +22,7 @@ pub fn App() -> impl IntoView {
     let (threads, set_threads) = signal(Vec::<ThreadSummary>::new());
     let (jobs, set_jobs) = signal(Vec::<JobRecord>::new());
     let (sidebar_open, set_sidebar_open) = signal(!is_compact_layout());
+    let (context_open, set_context_open) = signal(false);
     let (auth_session, set_auth_session) = signal(None::<AuthSessionStatus>);
     let (auth_password, set_auth_password) = signal(String::new());
     let (auth_error, set_auth_error) = signal(String::new());
@@ -388,6 +389,11 @@ pub fn App() -> impl IntoView {
                 .content { padding: 20px; min-height: 70vh; min-width: 0; overflow-x: hidden; background: color-mix(in srgb, var(--surface-container-lowest) 76%, transparent); }
                 .content-toolbar { display: none; }
                 .thread-mobile-meta {
+                    display: none;
+                }
+                .context-backdrop,
+                .context-toggle,
+                .context-close {
                     display: none;
                 }
                 .auth-shell {
@@ -764,6 +770,9 @@ pub fn App() -> impl IntoView {
                     gap: 8px;
                     align-content: start;
                 }
+                .context-shell-header {
+                    display: none;
+                }
                 .context-panel {
                     border: 1px solid var(--line);
                     border-radius: 20px;
@@ -1116,7 +1125,9 @@ pub fn App() -> impl IntoView {
                         margin-bottom: 8px;
                     }
                     .sidebar-toggle,
-                .sidebar-close {
+                    .sidebar-close,
+                    .context-toggle,
+                    .context-close {
                         display: inline-flex;
                         align-items: center;
                         justify-content: center;
@@ -1174,8 +1185,52 @@ pub fn App() -> impl IntoView {
                         min-height: calc(100vh - 172px);
                     }
                     .context-shell {
-                        order: 3;
-                        gap: 10px;
+                        position: fixed;
+                        left: 12px;
+                        right: 12px;
+                        bottom: 12px;
+                        z-index: 32;
+                        max-height: min(72vh, 620px);
+                        padding: 14px;
+                        border: 1px solid var(--line);
+                        border-radius: 24px;
+                        background: color-mix(in srgb, var(--surface) 98%, transparent);
+                        box-shadow: var(--elevation-3);
+                        overflow-y: auto;
+                        transform: translateY(112%);
+                        opacity: 0;
+                        pointer-events: none;
+                        transition: transform 0.22s ease, opacity 0.22s ease;
+                    }
+                    .context-shell.open {
+                        transform: translateY(0);
+                        opacity: 1;
+                        pointer-events: auto;
+                    }
+                    .context-backdrop {
+                        display: block;
+                        position: fixed;
+                        inset: 0;
+                        background: var(--scrim);
+                        opacity: 0;
+                        pointer-events: none;
+                        transition: opacity 0.18s ease;
+                        z-index: 31;
+                    }
+                    .context-backdrop.open {
+                        opacity: 1;
+                        pointer-events: auto;
+                    }
+                    .context-shell-header {
+                        display: flex;
+                        align-items: center;
+                        justify-content: space-between;
+                        gap: 12px;
+                        margin-bottom: 4px;
+                    }
+                    .context-shell-header h3 {
+                        margin: 0;
+                        font-size: 1rem;
                     }
                     .context-panel summary { padding: 10px 12px; }
                     .context-panel-body { padding: 10px 12px 12px 12px; }
@@ -1253,6 +1308,13 @@ pub fn App() -> impl IntoView {
                     .message-pane {
                         max-height: calc(100vh - 168px);
                         padding-bottom: 82px;
+                    }
+                    .context-shell {
+                        left: 10px;
+                        right: 10px;
+                        bottom: 10px;
+                        padding: 12px;
+                        border-radius: 20px;
                     }
                     .composer-dispatch-actions > button {
                         width: 100%;
@@ -1435,6 +1497,12 @@ pub fn App() -> impl IntoView {
                     class:open=move || sidebar_open.get()
                     on:click=move |_| set_sidebar_open.set(false)
                 ></button>
+                <button
+                    type="button"
+                    class="context-backdrop"
+                    class:open=move || context_open.get()
+                    on:click=move |_| set_context_open.set(false)
+                ></button>
                 <div class="sidebar-shell" class:open=move || sidebar_open.get()>
                 <section class="panel sidebar">
                     <div class="sidebar-header">
@@ -1525,6 +1593,7 @@ pub fn App() -> impl IntoView {
                                             class:active=move || selected_thread_id.get() == Some(active_thread_id.clone())
                                             on:click=move |_| {
                                                 set_selected_thread_id.set(Some(click_thread_id.clone()));
+                                                set_context_open.set(false);
                                                 if is_compact_layout() {
                                                     set_sidebar_open.set(false);
                                                 }
@@ -1570,6 +1639,7 @@ pub fn App() -> impl IntoView {
                                                 set_preferred_job_id.set(Some(click_job_id.clone()));
                                                 set_selected_job_id.set(Some(click_job_id.clone()));
                                                 set_selected_thread_id.set(Some(click_thread_id.clone()));
+                                                set_context_open.set(false);
                                                 if is_compact_layout() {
                                                     set_sidebar_open.set(false);
                                                 }
@@ -1623,6 +1693,21 @@ pub fn App() -> impl IntoView {
                         >
                             {move || if sidebar_open.get() { "Hide Threads" } else { "Show Threads" }}
                         </button>
+                        {move || {
+                            if selected_thread.get().is_some() {
+                                view! {
+                                    <button
+                                        type="button"
+                                        class="context-toggle"
+                                        on:click=move |_| set_context_open.update(|open| *open = !*open)
+                                    >
+                                        {move || if context_open.get() { "Hide Details" } else { "Details" }}
+                                    </button>
+                                }.into_any()
+                            } else {
+                                ().into_any()
+                            }
+                        }}
                     </div>
                     {move || {
                         if let Some(thread) = selected_thread.get() {
@@ -1666,7 +1751,17 @@ pub fn App() -> impl IntoView {
                                         </div>
                                     </section>
 
-                                    <div class="context-shell">
+                                    <div class="context-shell" class:open=move || context_open.get()>
+                                    <div class="context-shell-header">
+                                        <h3>"Conversation Details"</h3>
+                                        <button
+                                            type="button"
+                                            class="context-close"
+                                            on:click=move |_| set_context_open.set(false)
+                                        >
+                                            "Close"
+                                        </button>
+                                    </div>
                                     <details class="context-panel">
                                         <summary>"Thread Context"</summary>
                                         <div class="context-panel-body">
