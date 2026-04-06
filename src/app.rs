@@ -16,12 +16,20 @@ use crate::{
     models::*,
 };
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum NavMode {
+    Chats,
+    Jobs,
+    Details,
+}
+
 #[component]
 pub fn App() -> impl IntoView {
     let (threads, set_threads) = signal(Vec::<ThreadSummary>::new());
     let (jobs, set_jobs) = signal(Vec::<JobRecord>::new());
     let (sidebar_open, set_sidebar_open) = signal(!is_compact_layout());
     let (context_open, set_context_open) = signal(false);
+    let (nav_mode, set_nav_mode) = signal(NavMode::Chats);
     let (auth_session, set_auth_session) = signal(None::<AuthSessionStatus>);
     let (auth_password, set_auth_password) = signal(String::new());
     let (auth_error, set_auth_error) = signal(String::new());
@@ -403,6 +411,13 @@ pub fn App() -> impl IntoView {
                     display: none;
                 }
                 .sidebar { padding: 18px; display: flex; flex-direction: column; gap: 16px; }
+                .sidebar-view {
+                    display: grid;
+                    gap: 16px;
+                }
+                .sidebar-view.hidden {
+                    display: none;
+                }
                 .content {
                     padding: 20px;
                     min-height: 70vh;
@@ -1567,15 +1582,21 @@ pub fn App() -> impl IntoView {
                 </div>
             </section>
             <div class="frame">
-                <nav class="panel nav-rail" aria-label="Primary navigation">
+                <nav class="panel nav-rail" data-testid="nav-rail" aria-label="Primary navigation">
                     <div class="nav-rail-brand" aria-hidden="true">
                         <span class="material-symbols-rounded">"auto_awesome"</span>
                     </div>
                     <div class="nav-rail-items">
                         <button
                             type="button"
-                            class="nav-rail-item active"
-                            on:click=move |_| set_sidebar_open.set(true)
+                            class="nav-rail-item"
+                            class:active=move || nav_mode.get() == NavMode::Chats
+                            data-testid="nav-chats"
+                            on:click=move |_| {
+                                set_nav_mode.set(NavMode::Chats);
+                                set_context_open.set(false);
+                                set_sidebar_open.set(true);
+                            }
                         >
                             <span class="material-symbols-rounded" aria-hidden="true">"chat"</span>
                             <span>"Chats"</span>
@@ -1583,8 +1604,12 @@ pub fn App() -> impl IntoView {
                         <button
                             type="button"
                             class="nav-rail-item"
-                            class:active=move || context_open.get()
-                            on:click=move |_| set_context_open.update(|open| *open = !*open)
+                            class:active=move || nav_mode.get() == NavMode::Details || context_open.get()
+                            data-testid="nav-details"
+                            on:click=move |_| {
+                                set_nav_mode.set(NavMode::Details);
+                                set_context_open.update(|open| *open = !*open);
+                            }
                         >
                             <span class="material-symbols-rounded" aria-hidden="true">"info"</span>
                             <span>"Details"</span>
@@ -1592,9 +1617,12 @@ pub fn App() -> impl IntoView {
                         <button
                             type="button"
                             class="nav-rail-item"
+                            class:active=move || nav_mode.get() == NavMode::Jobs
+                            data-testid="nav-jobs"
                             on:click=move |_| {
+                                set_nav_mode.set(NavMode::Jobs);
+                                set_context_open.set(false);
                                 set_sidebar_open.set(true);
-                                set_status_text.set("Job history is available from the Jobs panel.".to_string());
                             }
                         >
                             <span class="material-symbols-rounded" aria-hidden="true">"work_history"</span>
@@ -1613,7 +1641,10 @@ pub fn App() -> impl IntoView {
                 <section class="panel sidebar">
                     <div class="sidebar-header">
                         <div>
-                            <h1>"Chats"</h1>
+                            <h1>{move || match nav_mode.get() {
+                                NavMode::Jobs => "Jobs",
+                                _ => "Chats",
+                            }}</h1>
                         </div>
                         <div class="sidebar-status compact">
                             <p class="status">{move || status_text.get()}</p>
@@ -1626,6 +1657,7 @@ pub fn App() -> impl IntoView {
                             "Close"
                         </button>
                     </div>
+                    <div class="sidebar-view" class:hidden=move || nav_mode.get() != NavMode::Chats data-testid="thread-nav-panel">
                     <details class="context-panel">
                         <summary>"New Thread"</summary>
                         <div class="context-panel-body">
@@ -1685,7 +1717,7 @@ pub fn App() -> impl IntoView {
                     </details>
                     <div class="sidebar-section">
                         <p class="eyebrow">"Recent Threads"</p>
-                        <div class="thread-list">
+                        <div class="thread-list" data-testid="thread-list">
                             <For
                                 each=move || threads.get()
                                 key=|thread| thread.id.clone()
@@ -1720,7 +1752,9 @@ pub fn App() -> impl IntoView {
                             />
                         </div>
                     </div>
-                    <details class="context-panel">
+                    </div>
+                    <div class="sidebar-view" class:hidden=move || nav_mode.get() != NavMode::Jobs data-testid="job-nav-panel">
+                    <details class="context-panel" open>
                         <summary>{move || format!("Global Jobs ({})", jobs.get().len())}</summary>
                         <div class="context-panel-body">
                         <div class="job-list">
@@ -1788,6 +1822,7 @@ pub fn App() -> impl IntoView {
                         </div>
                         </div>
                     </details>
+                    </div>
                 </section>
                 </div>
                 <section class="panel content">
@@ -1869,7 +1904,7 @@ pub fn App() -> impl IntoView {
                                         </div>
                                     </section>
 
-                                    <div class="context-shell" class:open=move || context_open.get()>
+                                    <div class="context-shell" class:open=move || context_open.get() data-testid="context-sheet">
                                     <div class="context-shell-header">
                                         <h3>"Conversation Details"</h3>
                                         <button
@@ -2452,7 +2487,7 @@ pub fn App() -> impl IntoView {
                                     </div>
 
                                     <div class="thread-primary">
-                                    <div class="message-pane" node_ref=message_pane_ref>
+                                    <div class="message-pane" data-testid="message-pane" node_ref=message_pane_ref>
                                     <div class="message-list">
                                         <For
                                             each=move || messages.clone()
@@ -2754,7 +2789,7 @@ pub fn App() -> impl IntoView {
                                         />
                                     </div>
                                     </div>
-                                    <form class="thread-composer" on:submit=move |ev: ev::SubmitEvent| {
+                                    <form class="thread-composer" data-testid="thread-composer" on:submit=move |ev: ev::SubmitEvent| {
                                         ev.prevent_default();
                                         let content = new_message_content.get_untracked().trim().to_string();
                                         if content.is_empty() {
