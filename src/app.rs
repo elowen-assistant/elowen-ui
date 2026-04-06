@@ -1636,11 +1636,16 @@ pub fn App() -> impl IntoView {
                         <button
                             type="button"
                             class="nav-rail-item"
-                            class:active=move || nav_mode.get() == NavMode::Details || context_open.get()
+                            class:active=move || nav_mode.get() == NavMode::Details && context_open.get()
                             data-testid="nav-details"
                             on:click=move |_| {
-                                set_nav_mode.set(NavMode::Details);
-                                set_context_open.update(|open| *open = !*open);
+                                if context_open.get_untracked() {
+                                    set_context_open.set(false);
+                                    set_nav_mode.set(NavMode::Chats);
+                                } else {
+                                    set_context_open.set(true);
+                                    set_nav_mode.set(NavMode::Details);
+                                }
                             }
                         >
                             <span class="material-symbols-rounded" aria-hidden="true">"info"</span>
@@ -1811,7 +1816,8 @@ pub fn App() -> impl IntoView {
                                                 set_preferred_job_id.set(Some(click_job_id.clone()));
                                                 set_selected_job_id.set(Some(click_job_id.clone()));
                                                 set_selected_thread_id.set(Some(click_thread_id.clone()));
-                                                set_context_open.set(false);
+                                                set_nav_mode.set(NavMode::Chats);
+                                                set_context_open.set(true);
                                                 if is_compact_layout() {
                                                     set_sidebar_open.set(false);
                                                 }
@@ -1862,7 +1868,10 @@ pub fn App() -> impl IntoView {
                         type="button"
                         class="context-backdrop"
                         class:open=move || context_open.get()
-                        on:click=move |_| set_context_open.set(false)
+                        on:click=move |_| {
+                            set_context_open.set(false);
+                            set_nav_mode.set(NavMode::Chats);
+                        }
                     ></button>
                     <div class="content-toolbar">
                         <button
@@ -1878,7 +1887,15 @@ pub fn App() -> impl IntoView {
                                     <button
                                         type="button"
                                         class="context-toggle"
-                                        on:click=move |_| set_context_open.update(|open| *open = !*open)
+                                        on:click=move |_| {
+                                            if context_open.get_untracked() {
+                                                set_context_open.set(false);
+                                                set_nav_mode.set(NavMode::Chats);
+                                            } else {
+                                                set_context_open.set(true);
+                                                set_nav_mode.set(NavMode::Details);
+                                            }
+                                        }
                                     >
                                         {move || if context_open.get() { "Hide Details" } else { "Details" }}
                                     </button>
@@ -2000,7 +2017,15 @@ pub fn App() -> impl IntoView {
                                             <button
                                                 type="button"
                                                 class="thread-details-button"
-                                                on:click=move |_| set_context_open.update(|open| *open = !*open)
+                                                on:click=move |_| {
+                                                    if context_open.get_untracked() {
+                                                        set_context_open.set(false);
+                                                        set_nav_mode.set(NavMode::Chats);
+                                                    } else {
+                                                        set_context_open.set(true);
+                                                        set_nav_mode.set(NavMode::Details);
+                                                    }
+                                                }
                                             >
                                                 {move || if context_open.get() { "Hide Details" } else { "Details" }}
                                             </button>
@@ -2019,7 +2044,10 @@ pub fn App() -> impl IntoView {
                                         <button
                                             type="button"
                                             class="context-close"
-                                            on:click=move |_| set_context_open.set(false)
+                                            on:click=move |_| {
+                                                set_context_open.set(false);
+                                                set_nav_mode.set(NavMode::Chats);
+                                            }
                                         >
                                             "Close"
                                         </button>
