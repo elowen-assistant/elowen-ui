@@ -722,6 +722,28 @@ pub fn App() -> impl IntoView {
                     font-size: 0.8rem;
                 }
                 .job-meta { flex-wrap: wrap; justify-content: flex-start; gap: 10px 16px; }
+                .job-card.intent-card {
+                    position: relative;
+                    padding-right: 56px;
+                }
+                .job-card.intent-card::after {
+                    content: "arrow_forward";
+                    font-family: "Material Symbols Rounded";
+                    position: absolute;
+                    right: 18px;
+                    top: 50%;
+                    transform: translateY(-50%);
+                    width: 32px;
+                    height: 32px;
+                    border-radius: 999px;
+                    display: inline-flex;
+                    align-items: center;
+                    justify-content: center;
+                    background: color-mix(in srgb, var(--primary-container) 74%, transparent);
+                    color: var(--on-primary-container);
+                    font-size: 20px;
+                    font-variation-settings: "FILL" 0, "wght" 500, "GRAD" 0, "opsz" 24;
+                }
                 .job-browser {
                     height: 100%;
                     min-height: 0;
@@ -745,6 +767,10 @@ pub fn App() -> impl IntoView {
                     margin: 0;
                     font-size: 1.35rem;
                     line-height: 1.15;
+                }
+                .job-browser-header .status {
+                    margin: 4px 0 0 0;
+                    font-size: 0.82rem;
                 }
                 .job-browser-grid {
                     min-height: 0;
@@ -1914,6 +1940,7 @@ pub fn App() -> impl IntoView {
                                         <div>
                                             <p class="eyebrow">"Jobs"</p>
                                             <h2>"Job history"</h2>
+                                            <p class="status">"Select a job to return to its chat with details open."</p>
                                         </div>
                                         <span class="thread-pill">{format!("{} jobs", global_jobs.len())}</span>
                                     </div>
@@ -1933,6 +1960,7 @@ pub fn App() -> impl IntoView {
                                                 view! {
                                                     <article
                                                         class=("job-card", true)
+                                                        class=("intent-card", true)
                                                         class:active=move || selected_job_id.get() == Some(active_job_id.clone())
                                                         on:click=move |_| {
                                                             set_preferred_job_id.set(Some(click_job_id.clone()));
