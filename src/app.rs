@@ -1,5 +1,6 @@
 use gloo_timers::future::TimeoutFuture;
 use leptos::{ev, html, prelude::*, task::spawn_local};
+use wasm_bindgen::JsCast;
 
 use crate::{
     api::{
@@ -23,28 +24,61 @@ enum NavMode {
     Details,
 }
 
+impl NavMode {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Chats => "chats",
+            Self::Jobs => "jobs",
+            Self::Details => "details",
+        }
+    }
+
+    fn from_storage(value: &str) -> Self {
+        match value {
+            "jobs" => Self::Jobs,
+            "details" => Self::Details,
+            _ => Self::Chats,
+        }
+    }
+}
+
+const STORAGE_SELECTED_THREAD_ID: &str = "elowen.selected_thread_id";
+const STORAGE_SELECTED_JOB_ID: &str = "elowen.selected_job_id";
+const STORAGE_CONTEXT_OPEN: &str = "elowen.context_open";
+const STORAGE_NAV_MODE: &str = "elowen.nav_mode";
+const STORAGE_COMPOSER_TEXT: &str = "elowen.composer_text";
+
 #[component]
 pub fn App() -> impl IntoView {
     let (threads, set_threads) = signal(Vec::<ThreadSummary>::new());
     let (jobs, set_jobs) = signal(Vec::<JobRecord>::new());
     let (sidebar_open, set_sidebar_open) = signal(!is_compact_layout());
-    let (context_open, set_context_open) = signal(false);
-    let (nav_mode, set_nav_mode) = signal(NavMode::Chats);
+    let (context_open, set_context_open) =
+        signal(read_bool_storage(STORAGE_CONTEXT_OPEN).unwrap_or(false));
+    let (nav_mode, set_nav_mode) = signal(
+        read_storage(STORAGE_NAV_MODE)
+            .as_deref()
+            .map(NavMode::from_storage)
+            .unwrap_or(NavMode::Chats),
+    );
     let (auth_session, set_auth_session) = signal(None::<AuthSessionStatus>);
     let (auth_password, set_auth_password) = signal(String::new());
     let (auth_error, set_auth_error) = signal(String::new());
-    let (selected_thread_id, set_selected_thread_id) = signal(None::<String>);
+    let (selected_thread_id, set_selected_thread_id) =
+        signal(read_storage(STORAGE_SELECTED_THREAD_ID));
     let (selected_thread, set_selected_thread) = signal(None::<ThreadDetail>);
     let (preferred_job_id, set_preferred_job_id) = signal(None::<String>);
-    let (selected_job_id, set_selected_job_id) = signal(None::<String>);
+    let (selected_job_id, set_selected_job_id) = signal(read_storage(STORAGE_SELECTED_JOB_ID));
     let (selected_job_detail, set_selected_job_detail) = signal(None::<JobDetail>);
     let (new_thread_title, set_new_thread_title) = signal(String::new());
-    let (new_message_content, set_new_message_content) = signal(String::new());
+    let (new_message_content, set_new_message_content) =
+        signal(read_storage(STORAGE_COMPOSER_TEXT).unwrap_or_default());
     let (new_job_title, set_new_job_title) = signal(String::new());
     let (new_job_repo, set_new_job_repo) = signal(String::from("elowen-api"));
     let (new_job_base_branch, set_new_job_base_branch) = signal(String::from("main"));
     let (new_job_request_text, set_new_job_request_text) = signal(String::new());
     let (status_text, set_status_text) = signal(String::from("Loading threads and jobs..."));
+    let (message_pane_pinned, set_message_pane_pinned) = signal(true);
     let message_pane_ref = NodeRef::<html::Div>::new();
 
     spawn_local(async move {
@@ -177,8 +211,8 @@ pub fn App() -> impl IntoView {
 
     Effect::new(move |_| {
         if let Some(thread_id) = selected_thread_id.get() {
-            set_selected_job_id.set(None);
             set_selected_job_detail.set(None);
+            set_message_pane_pinned.set(true);
 
             spawn_local(async move {
                 if let Err(error) =
@@ -192,6 +226,32 @@ pub fn App() -> impl IntoView {
             set_selected_job_id.set(None);
             set_selected_job_detail.set(None);
         }
+    });
+
+    Effect::new(move |_| {
+        write_optional_storage(
+            STORAGE_SELECTED_THREAD_ID,
+            selected_thread_id.get().as_deref(),
+        );
+    });
+
+    Effect::new(move |_| {
+        write_optional_storage(STORAGE_SELECTED_JOB_ID, selected_job_id.get().as_deref());
+    });
+
+    Effect::new(move |_| {
+        write_storage(
+            STORAGE_CONTEXT_OPEN,
+            if context_open.get() { "true" } else { "false" },
+        );
+    });
+
+    Effect::new(move |_| {
+        write_storage(STORAGE_NAV_MODE, nav_mode.get().as_str());
+    });
+
+    Effect::new(move |_| {
+        write_storage(STORAGE_COMPOSER_TEXT, &new_message_content.get());
     });
 
     Effect::new(move |_| {
@@ -244,7 +304,9 @@ pub fn App() -> impl IntoView {
             .map(|thread| thread.messages.len())
             .unwrap_or_default();
 
-        if let Some(message_pane) = message_pane_ref.get() {
+        if message_pane_pinned.get_untracked()
+            && let Some(message_pane) = message_pane_ref.get()
+        {
             message_pane.set_scroll_top(message_pane.scroll_height());
         }
     });
@@ -2667,7 +2729,19 @@ pub fn App() -> impl IntoView {
                                     </div>
 
                                     <div class="thread-primary">
-                                    <div class="message-pane" data-testid="message-pane" node_ref=message_pane_ref>
+                                    <div
+                                        class="message-pane"
+                                        data-testid="message-pane"
+                                        node_ref=message_pane_ref
+                                        on:scroll=move |_| {
+                                            if let Some(message_pane) = message_pane_ref.get() {
+                                                let distance_from_bottom = message_pane.scroll_height()
+                                                    - message_pane.scroll_top()
+                                                    - message_pane.client_height();
+                                                set_message_pane_pinned.set(distance_from_bottom <= 96);
+                                            }
+                                        }
+                                    >
                                     <div class="message-list">
                                         <For
                                             each=move || messages.clone()
@@ -3018,6 +3092,18 @@ pub fn App() -> impl IntoView {
                                                 placeholder="Message Elowen"
                                                 prop:value=move || new_message_content.get()
                                                 on:input=move |ev| set_new_message_content.set(event_target_value(&ev))
+                                                on:keydown=move |ev: ev::KeyboardEvent| {
+                                                    if ev.ctrl_key() && ev.key() == "Enter" {
+                                                        ev.prevent_default();
+                                                        if let Some(form) = ev
+                                                            .target()
+                                                            .and_then(|target| target.dyn_into::<web_sys::HtmlTextAreaElement>().ok())
+                                                            .and_then(|textarea| textarea.form())
+                                                        {
+                                                            let _ = form.request_submit();
+                                                        }
+                                                    }
+                                                }
                                             />
                                             <button type="submit" class="composer-send" aria-label="Send message">
                                                 <span class="material-symbols-rounded" aria-hidden="true">"arrow_circle_up"</span>
@@ -3113,4 +3199,35 @@ fn is_compact_layout() -> bool {
 
 fn is_auth_error(error: &str) -> bool {
     error.contains("sign in required") || error.contains("status 401")
+}
+
+fn read_storage(key: &str) -> Option<String> {
+    web_sys::window()
+        .and_then(|window| window.local_storage().ok().flatten())
+        .and_then(|storage| storage.get_item(key).ok().flatten())
+        .filter(|value| !value.is_empty())
+}
+
+fn read_bool_storage(key: &str) -> Option<bool> {
+    read_storage(key).map(|value| value == "true")
+}
+
+fn write_storage(key: &str, value: &str) {
+    if let Some(storage) =
+        web_sys::window().and_then(|window| window.local_storage().ok().flatten())
+    {
+        let _ = storage.set_item(key, value);
+    }
+}
+
+fn write_optional_storage(key: &str, value: Option<&str>) {
+    if let Some(storage) =
+        web_sys::window().and_then(|window| window.local_storage().ok().flatten())
+    {
+        if let Some(value) = value.filter(|value| !value.is_empty()) {
+            let _ = storage.set_item(key, value);
+        } else {
+            let _ = storage.remove_item(key);
+        }
+    }
 }
