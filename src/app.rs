@@ -391,10 +391,11 @@ pub fn App() -> impl IntoView {
                     display: grid;
                     grid-template-columns: 84px 308px 1fr;
                     gap: 14px;
-                    align-items: start;
+                    align-items: stretch;
                     position: relative;
                     height: calc(100vh - 108px);
                     min-height: calc(100vh - 108px);
+                    max-height: calc(100vh - 108px);
                 }
                 .panel {
                     background: color-mix(in srgb, var(--surface) 92%, transparent);
@@ -420,9 +421,10 @@ pub fn App() -> impl IntoView {
                 }
                 .content {
                     padding: 20px;
-                    min-height: 70vh;
                     min-width: 0;
                     height: 100%;
+                    min-height: 0;
+                    max-height: 100%;
                     overflow: hidden;
                     background: color-mix(in srgb, var(--surface-container-lowest) 76%, transparent);
                     position: relative;
@@ -1164,7 +1166,7 @@ pub fn App() -> impl IntoView {
                             "hero"
                             "chat";
                         grid-template-rows: auto minmax(0, 1fr);
-                        align-items: start;
+                        align-items: stretch;
                     }
                     .thread-focus.details-open {
                         grid-template-columns: minmax(0, 1fr) minmax(280px, 320px);
