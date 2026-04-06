@@ -43,6 +43,34 @@ impl NavMode {
     }
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum RealtimeStatus {
+    Connecting,
+    Connected,
+    Degraded,
+    Disconnected,
+}
+
+impl RealtimeStatus {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Connecting => "Realtime connecting",
+            Self::Connected => "Realtime connected",
+            Self::Degraded => "Realtime degraded",
+            Self::Disconnected => "Realtime offline",
+        }
+    }
+
+    fn class(self) -> &'static str {
+        match self {
+            Self::Connecting => "connecting",
+            Self::Connected => "connected",
+            Self::Degraded => "degraded",
+            Self::Disconnected => "disconnected",
+        }
+    }
+}
+
 #[derive(Clone, Copy)]
 struct UiEventSyncHandles {
     selected_thread_id: ReadSignal<Option<String>>,
@@ -54,6 +82,8 @@ struct UiEventSyncHandles {
     set_selected_job_detail: WriteSignal<Option<JobDetail>>,
     set_auth_session: WriteSignal<Option<AuthSessionStatus>>,
     set_status_text: WriteSignal<String>,
+    set_realtime_status: WriteSignal<RealtimeStatus>,
+    set_event_source: WriteSignal<Option<EventSource>>,
 }
 
 const STORAGE_SELECTED_THREAD_ID: &str = "elowen.selected_thread_id";
@@ -94,7 +124,8 @@ pub fn App() -> impl IntoView {
     let (new_job_request_text, set_new_job_request_text) = signal(String::new());
     let (status_text, set_status_text) = signal(String::from("Loading threads and jobs..."));
     let (message_pane_pinned, set_message_pane_pinned) = signal(true);
-    let (event_stream_connected, set_event_stream_connected) = signal(false);
+    let (realtime_status, set_realtime_status) = signal(RealtimeStatus::Connecting);
+    let (event_source, set_event_source) = signal(None::<EventSource>);
     let message_pane_ref = NodeRef::<html::Div>::new();
 
     spawn_local(async move {
@@ -231,8 +262,9 @@ pub fn App() -> impl IntoView {
             .map(|session| !session.enabled || session.authenticated)
             .unwrap_or(false);
 
-        if can_access && !event_stream_connected.get_untracked() {
-            set_event_stream_connected.set(true);
+        let needs_stream = event_source.with_untracked(Option::is_none);
+        if can_access && needs_stream {
+            set_realtime_status.set(RealtimeStatus::Connecting);
             connect_ui_event_stream(UiEventSyncHandles {
                 selected_thread_id,
                 selected_job_id,
@@ -243,6 +275,8 @@ pub fn App() -> impl IntoView {
                 set_selected_job_detail,
                 set_auth_session,
                 set_status_text,
+                set_realtime_status,
+                set_event_source,
             });
         }
     });
@@ -485,6 +519,19 @@ pub fn App() -> impl IntoView {
                     overflow: hidden;
                     text-overflow: ellipsis;
                     white-space: nowrap;
+                }
+                .topbar-chip.realtime {
+                    color: var(--muted);
+                    background: var(--surface-container-high);
+                }
+                .topbar-chip.realtime.connected {
+                    color: #24523a;
+                    background: color-mix(in srgb, var(--tertiary-container) 78%, var(--surface));
+                }
+                .topbar-chip.realtime.degraded,
+                .topbar-chip.realtime.disconnected {
+                    color: #7a3b12;
+                    background: #ffdcc2;
                 }
                 .nav-fab {
                     display: none;
@@ -1712,6 +1759,9 @@ pub fn App() -> impl IntoView {
                             Some(operator_label) => view! {
                                 <>
                                     <span class="topbar-chip operator">{operator_label}</span>
+                                    <span class=move || format!("topbar-chip realtime {}", realtime_status.get().class())>
+                                        {move || realtime_status.get().label()}
+                                    </span>
                                     <button
                                         type="button"
                                         class="logout-button"
@@ -1725,9 +1775,18 @@ pub fn App() -> impl IntoView {
                                                 let set_selected_job_id = set_selected_job_id;
                                                 let set_threads = set_threads;
                                                 let set_jobs = set_jobs;
+                                                let set_realtime_status = set_realtime_status;
+                                                let set_event_source = set_event_source;
                                                 async move {
                                                     match logout_session().await {
                                                         Ok(session) => {
+                                                            event_source.with_untracked(|source| {
+                                                                if let Some(source) = source {
+                                                                    source.close();
+                                                                }
+                                                            });
+                                                            set_event_source.set(None);
+                                                            set_realtime_status.set(RealtimeStatus::Disconnected);
                                                             set_auth_session.set(Some(session));
                                                             set_status_text.set("Signed out.".to_string());
                                                             set_selected_thread.set(None);
@@ -3173,11 +3232,18 @@ pub fn App() -> impl IntoView {
 
 fn connect_ui_event_stream(handles: UiEventSyncHandles) {
     let Ok(source) = EventSource::new(&events_url()) else {
+        handles.set_realtime_status.set(RealtimeStatus::Degraded);
         handles
             .set_status_text
             .set("Realtime stream unavailable. Polling fallback remains active.".to_string());
         return;
     };
+
+    let on_open = Closure::<dyn FnMut(Event)>::wrap(Box::new(move |_| {
+        handles.set_realtime_status.set(RealtimeStatus::Connected);
+    }));
+    source.set_onopen(Some(on_open.as_ref().unchecked_ref()));
+    on_open.forget();
 
     let on_message =
         Closure::<dyn FnMut(MessageEvent)>::wrap(Box::new(move |message: MessageEvent| {
@@ -3213,6 +3279,7 @@ fn connect_ui_event_stream(handles: UiEventSyncHandles) {
     on_message.forget();
 
     let on_error = Closure::<dyn FnMut(Event)>::wrap(Box::new(move |_| {
+        handles.set_realtime_status.set(RealtimeStatus::Degraded);
         handles
             .set_status_text
             .set("Realtime stream unavailable. Polling fallback remains active.".to_string());
@@ -3220,42 +3287,56 @@ fn connect_ui_event_stream(handles: UiEventSyncHandles) {
     source.set_onerror(Some(on_error.as_ref().unchecked_ref()));
     on_error.forget();
 
-    std::mem::forget(source);
+    handles.set_event_source.set(Some(source));
 }
 
 async fn refresh_for_ui_event(event: UiEvent, handles: UiEventSyncHandles) -> Result<(), String> {
-    sync_thread_list(
-        handles.set_threads,
-        handles.selected_thread_id,
-        handles.set_selected_thread_id,
-        handles.set_status_text,
-    )
-    .await?;
+    match event.event_type.as_str() {
+        "thread.changed" => {
+            if event.thread_id.as_ref() == handles.selected_thread_id.get_untracked().as_ref()
+                && let Some(thread_id) = event.thread_id
+            {
+                sync_selected_thread_quiet(thread_id, handles.set_selected_thread).await?;
+            }
+            sync_thread_list_quiet(
+                handles.set_threads,
+                handles.selected_thread_id,
+                handles.set_selected_thread_id,
+            )
+            .await?;
+        }
+        "job.changed" => {
+            sync_job_list(handles.set_jobs).await?;
 
-    if matches!(event.event_type.as_str(), "job.changed" | "device.changed") {
-        sync_job_list(handles.set_jobs).await?;
-    }
+            if event.thread_id.as_ref() == handles.selected_thread_id.get_untracked().as_ref()
+                && let Some(thread_id) = event.thread_id
+            {
+                sync_selected_thread_quiet(thread_id, handles.set_selected_thread).await?;
+                sync_thread_list_quiet(
+                    handles.set_threads,
+                    handles.selected_thread_id,
+                    handles.set_selected_thread_id,
+                )
+                .await?;
+            }
 
-    if event.thread_id.as_ref() == handles.selected_thread_id.get_untracked().as_ref()
-        && let Some(thread_id) = event.thread_id
-    {
-        sync_selected_thread(
-            thread_id,
-            handles.set_selected_thread,
-            handles.set_status_text,
-        )
-        .await?;
-    }
-
-    if event.job_id.as_ref() == handles.selected_job_id.get_untracked().as_ref()
-        && let Some(job_id) = event.job_id
-    {
-        sync_selected_job(
-            job_id,
-            handles.set_selected_job_detail,
-            handles.set_status_text,
-        )
-        .await?;
+            if event.job_id.as_ref() == handles.selected_job_id.get_untracked().as_ref()
+                && let Some(job_id) = event.job_id
+            {
+                sync_selected_job_quiet(job_id, handles.set_selected_job_detail).await?;
+            }
+        }
+        "device.changed" => {
+            sync_job_list(handles.set_jobs).await?;
+        }
+        _ => {
+            sync_thread_list_quiet(
+                handles.set_threads,
+                handles.selected_thread_id,
+                handles.set_selected_thread_id,
+            )
+            .await?;
+        }
     }
 
     Ok(())
@@ -3267,12 +3348,43 @@ async fn sync_thread_list(
     set_selected_thread_id: WriteSignal<Option<String>>,
     set_status_text: WriteSignal<String>,
 ) -> Result<(), String> {
+    sync_thread_list_internal(
+        set_threads,
+        selected_thread_id,
+        set_selected_thread_id,
+        Some(set_status_text),
+    )
+    .await
+}
+
+async fn sync_thread_list_quiet(
+    set_threads: WriteSignal<Vec<ThreadSummary>>,
+    selected_thread_id: ReadSignal<Option<String>>,
+    set_selected_thread_id: WriteSignal<Option<String>>,
+) -> Result<(), String> {
+    sync_thread_list_internal(
+        set_threads,
+        selected_thread_id,
+        set_selected_thread_id,
+        None,
+    )
+    .await
+}
+
+async fn sync_thread_list_internal(
+    set_threads: WriteSignal<Vec<ThreadSummary>>,
+    selected_thread_id: ReadSignal<Option<String>>,
+    set_selected_thread_id: WriteSignal<Option<String>>,
+    set_status_text: Option<WriteSignal<String>>,
+) -> Result<(), String> {
     let fetched_threads = fetch_threads().await?;
     let current_selected = selected_thread_id.get_untracked();
 
     if fetched_threads.is_empty() {
         set_selected_thread_id.set(None);
-        set_status_text.set("No threads yet. Create one to start.".to_string());
+        if let Some(set_status_text) = set_status_text {
+            set_status_text.set("No threads yet. Create one to start.".to_string());
+        }
     } else {
         let selected_exists = current_selected
             .as_ref()
@@ -3283,7 +3395,9 @@ async fn sync_thread_list(
             set_selected_thread_id.set(fetched_threads.first().map(|thread| thread.id.clone()));
         }
 
-        set_status_text.set("Thread state synced.".to_string());
+        if let Some(set_status_text) = set_status_text {
+            set_status_text.set("Thread state synced.".to_string());
+        }
     }
 
     set_threads.set(fetched_threads);
@@ -3300,13 +3414,21 @@ async fn sync_selected_thread(
     set_selected_thread: WriteSignal<Option<ThreadDetail>>,
     set_status_text: WriteSignal<String>,
 ) -> Result<(), String> {
+    sync_selected_thread_quiet(thread_id, set_selected_thread).await?;
+    set_status_text.set("Thread detail loaded.".to_string());
+    Ok(())
+}
+
+async fn sync_selected_thread_quiet(
+    thread_id: String,
+    set_selected_thread: WriteSignal<Option<ThreadDetail>>,
+) -> Result<(), String> {
     let thread = fetch_thread(&thread_id).await?;
     set_selected_thread.update(|current| {
         if current.as_ref() != Some(&thread) {
             *current = Some(thread);
         }
     });
-    set_status_text.set("Thread detail loaded.".to_string());
     Ok(())
 }
 
@@ -3315,13 +3437,21 @@ async fn sync_selected_job(
     set_selected_job_detail: WriteSignal<Option<JobDetail>>,
     set_status_text: WriteSignal<String>,
 ) -> Result<(), String> {
+    sync_selected_job_quiet(job_id, set_selected_job_detail).await?;
+    set_status_text.set("Job detail loaded.".to_string());
+    Ok(())
+}
+
+async fn sync_selected_job_quiet(
+    job_id: String,
+    set_selected_job_detail: WriteSignal<Option<JobDetail>>,
+) -> Result<(), String> {
     let job = fetch_job(&job_id).await?;
     set_selected_job_detail.update(|current| {
         if current.as_ref() != Some(&job) {
             *current = Some(job);
         }
     });
-    set_status_text.set("Job detail loaded.".to_string());
     Ok(())
 }
 
