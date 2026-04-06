@@ -762,6 +762,20 @@ pub fn App() -> impl IntoView {
                     margin: 0;
                     font-size: 0.82rem;
                 }
+                .thread-details-button {
+                    display: inline-flex;
+                    align-items: center;
+                    justify-content: center;
+                    gap: 6px;
+                    border-radius: 18px;
+                    border: 1px solid var(--line);
+                    background: color-mix(in srgb, var(--surface) 96%, transparent);
+                    color: var(--on-primary-container);
+                    padding: 8px 12px;
+                    font-size: 0.82rem;
+                    font-weight: 700;
+                    box-shadow: var(--elevation-1);
+                }
                 .thread-summary-row {
                     display: flex;
                     flex-wrap: wrap;
@@ -1006,12 +1020,18 @@ pub fn App() -> impl IntoView {
                 }
                 @media (min-width: 921px) {
                     .thread-focus {
-                        grid-template-columns: minmax(0, 1fr) 320px;
+                        grid-template-columns: minmax(0, 1fr);
+                        grid-template-areas:
+                            "hero"
+                            "chat";
+                        grid-template-rows: auto minmax(0, 1fr);
+                        align-items: start;
+                    }
+                    .thread-focus.details-open {
+                        grid-template-columns: minmax(0, 1fr) minmax(280px, 320px);
                         grid-template-areas:
                             "hero hero"
                             "chat context";
-                        grid-template-rows: auto minmax(0, 1fr);
-                        align-items: start;
                     }
                     .thread-hero {
                         grid-area: hero;
@@ -1025,11 +1045,15 @@ pub fn App() -> impl IntoView {
                     }
                     .context-shell {
                         grid-area: context;
+                        display: none;
                         position: sticky;
                         top: 82px;
                         max-height: calc(100vh - 136px);
                         overflow-y: auto;
                         padding-right: 2px;
+                    }
+                    .thread-focus.details-open .context-shell {
+                        display: grid;
                     }
                 }
                 @media (max-width: 920px) {
@@ -1151,6 +1175,9 @@ pub fn App() -> impl IntoView {
                     .thread-hero .eyebrow,
                     .thread-hero .status,
                     .thread-summary-row {
+                        display: none;
+                    }
+                    .thread-details-button {
                         display: none;
                     }
                     .thread-mobile-meta {
@@ -1703,7 +1730,7 @@ pub fn App() -> impl IntoView {
                             let active_job_id = selected_job_id.get();
 
                             view! {
-                                <div class="thread-focus">
+                                <div class="thread-focus" class:details-open=move || context_open.get()>
                                     <section class="thread-hero">
                                         <div class="thread-hero-header">
                                             <div>
@@ -1721,6 +1748,13 @@ pub fn App() -> impl IntoView {
                                             )>
                                                 {thread_record.status.clone()}
                                             </span>
+                                            <button
+                                                type="button"
+                                                class="thread-details-button"
+                                                on:click=move |_| set_context_open.update(|open| *open = !*open)
+                                            >
+                                                {move || if context_open.get() { "Hide Details" } else { "Details" }}
+                                            </button>
                                         </div>
                                         <div class="thread-summary-row">
                                             <span class="thread-pill">{format!("{} messages", messages.len())}</span>
