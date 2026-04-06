@@ -99,37 +99,6 @@ pub(crate) async fn send_thread_chat_message(thread_id: &str, content: &str) -> 
     Ok(())
 }
 
-pub(crate) async fn dispatch_chat_message(
-    thread_id: &str,
-    content: &str,
-    title: &str,
-    repo_name: &str,
-    base_branch: &str,
-    execution_intent: Option<ExecutionIntent>,
-) -> Result<JobRecord, String> {
-    let response: ChatDispatchResponse = decode_json(
-        with_credentials(Request::post(&format!(
-            "{}/threads/{thread_id}/chat-dispatch",
-            api_base()
-        )))
-        .json(&CreateChatDispatchRequest {
-            content: content.to_string(),
-            title: title.to_string(),
-            repo_name: repo_name.to_string(),
-            base_branch: base_branch.to_string(),
-            execution_intent,
-        })
-        .map_err(|error| error.to_string())?
-        .send()
-        .await
-        .map_err(|error| error.to_string())?,
-    )
-    .await?;
-
-    let _ = (&response.message, &response.acknowledgement);
-    Ok(response.job)
-}
-
 pub(crate) async fn dispatch_thread_message(
     thread_id: &str,
     source_message_id: &str,

@@ -150,15 +150,6 @@ pub(crate) struct CreateThreadRequest {
 }
 
 #[derive(Debug, Serialize)]
-pub(crate) struct CreateChatDispatchRequest {
-    pub(crate) content: String,
-    pub(crate) title: String,
-    pub(crate) repo_name: String,
-    pub(crate) base_branch: String,
-    pub(crate) execution_intent: Option<ExecutionIntent>,
-}
-
-#[derive(Debug, Serialize)]
 pub(crate) struct CreateThreadChatRequest {
     pub(crate) content: String,
 }
@@ -187,13 +178,6 @@ pub(crate) struct ResolveApprovalRequest {
     pub(crate) status: String,
     pub(crate) resolved_by: String,
     pub(crate) reason: String,
-}
-
-#[derive(Debug, Deserialize)]
-pub(crate) struct ChatDispatchResponse {
-    pub(crate) message: MessageRecord,
-    pub(crate) acknowledgement: MessageRecord,
-    pub(crate) job: JobRecord,
 }
 
 #[derive(Debug, Deserialize)]
