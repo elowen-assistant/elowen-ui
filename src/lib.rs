@@ -1,8 +1,8 @@
 //! Leptos UI crate for Elowen.
 
 mod api;
-mod app;
+mod app_redesign;
 mod format;
 mod models;
 
-pub use app::App;
+pub use app_redesign::App;
