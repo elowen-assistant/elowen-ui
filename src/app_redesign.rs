@@ -387,6 +387,33 @@ pub fn App() -> impl IntoView {
     let (realtime_status, set_realtime_status) = signal(RealtimeStatus::Connecting);
     let (event_source, set_event_source) = signal(None::<EventSource>);
     let message_pane_ref = NodeRef::<html::Div>::new();
+    let composer_textarea_ref = NodeRef::<html::Textarea>::new();
+
+    Effect::new(move |_| {
+        let _ = new_message_content.get();
+
+        if let Some(textarea) = composer_textarea_ref.get() {
+            let _ = textarea.set_attribute("style", "height: auto; overflow-y: hidden;");
+
+            let viewport_height = web_sys::window()
+                .and_then(|window| window.inner_height().ok())
+                .and_then(|height| height.as_f64())
+                .unwrap_or(720.0);
+            let max_height = (viewport_height * 0.5).max(140.0);
+            let scroll_height = textarea.scroll_height() as f64;
+            let next_height = scroll_height.min(max_height).max(50.0);
+            let overflow_y = if scroll_height > max_height {
+                "auto"
+            } else {
+                "hidden"
+            };
+
+            let _ = textarea.set_attribute(
+                "style",
+                &format!("height: {next_height}px; overflow-y: {overflow_y};"),
+            );
+        }
+    });
 
     spawn_local(async move {
         match fetch_auth_session().await {
@@ -774,6 +801,30 @@ pub fn App() -> impl IntoView {
                                             }}
                                         </p>
                                     </div>
+                                    <button
+                                        type="button"
+                                        class="header-button mobile-details-button"
+                                        data-testid="mobile-details"
+                                        disabled=move || selected_thread.get().is_none()
+                                        on:click=move |_| {
+                                            if selected_thread.get_untracked().is_none() {
+                                                return;
+                                            }
+                                            if context_open.get_untracked() {
+                                                set_context_open.set(false);
+                                                set_nav_mode.set(NavMode::Chats);
+                                            } else {
+                                                set_context_open.set(true);
+                                                set_nav_mode.set(NavMode::Details);
+                                            }
+                                        }
+                                    >
+                                        <svg class="header-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                                            <path d="M12 8h.01M11.2 12h.8v4h.8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                                            <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.8"/>
+                                        </svg>
+                                        <span class="sr-only">"Open details"</span>
+                                    </button>
                                 </div>
                                 <div class="header-actions">
                                     <button
@@ -1502,6 +1553,7 @@ pub fn App() -> impl IntoView {
                                                             }>
                                                                 <div class="composer-input-wrap">
                                                                     <textarea
+                                                                        node_ref=composer_textarea_ref
                                                                         rows="1"
                                                                         placeholder="Message Elowen"
                                                                         prop:value=move || new_message_content.get()
