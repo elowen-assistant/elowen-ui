@@ -932,6 +932,98 @@ pub fn App() -> impl IntoView {
                                         </button>
                                     </div>
 
+                                    <div class="drawer-utility-stack">
+                                        <button
+                                            type="button"
+                                            class="button-secondary drawer-utility-button"
+                                            data-testid="drawer-details"
+                                            disabled=move || selected_thread.get().is_none()
+                                            on:click=move |_| {
+                                                if selected_thread.get_untracked().is_none() {
+                                                    return;
+                                                }
+                                                set_sidebar_open.set(false);
+                                                if context_open.get_untracked() {
+                                                    set_context_open.set(false);
+                                                    set_nav_mode.set(NavMode::Chats);
+                                                } else {
+                                                    set_context_open.set(true);
+                                                    set_nav_mode.set(NavMode::Details);
+                                                }
+                                            }
+                                        >
+                                            {move || {
+                                                if context_open.get() {
+                                                    "Hide Details"
+                                                } else {
+                                                    "Conversation Details"
+                                                }
+                                            }}
+                                        </button>
+                                        <div class="drawer-status-stack">
+                                            {move || {
+                                                match auth_session.get().and_then(|session| session.operator_label) {
+                                                    Some(operator_label) => view! {
+                                                        <div class="drawer-chip-row">
+                                                            <span class="topbar-chip operator">{operator_label}</span>
+                                                            <span class=move || format!("topbar-chip realtime {}", realtime_status.get().class())>
+                                                                {move || realtime_status.get().label()}
+                                                            </span>
+                                                        </div>
+                                                    }.into_any(),
+                                                    None => view! { <span class="topbar-chip">"Protected workspace"</span> }.into_any(),
+                                                }
+                                            }}
+                                            <p class="drawer-status-copy">{move || status_text.get()}</p>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            class="button-secondary drawer-signout"
+                                            on:click=move |_| {
+                                                spawn_local({
+                                                    let set_auth_session = set_auth_session;
+                                                    let set_status_text = set_status_text;
+                                                    let set_selected_thread = set_selected_thread;
+                                                    let set_selected_thread_id = set_selected_thread_id;
+                                                    let set_selected_job_detail = set_selected_job_detail;
+                                                    let set_selected_job_id = set_selected_job_id;
+                                                    let set_threads = set_threads;
+                                                    let set_jobs = set_jobs;
+                                                    let set_realtime_status = set_realtime_status;
+                                                    let set_event_source = set_event_source;
+                                                    async move {
+                                                        match logout_session().await {
+                                                            Ok(session) => {
+                                                                event_source.with_untracked(|source| {
+                                                                    if let Some(source) = source {
+                                                                        source.close();
+                                                                    }
+                                                                });
+                                                                set_event_source.set(None);
+                                                                set_realtime_status.set(RealtimeStatus::Disconnected);
+                                                                set_auth_session.set(Some(session));
+                                                                set_status_text.set("Signed out.".to_string());
+                                                                set_selected_thread.set(None);
+                                                                set_selected_thread_id.set(None);
+                                                                set_selected_job_detail.set(None);
+                                                                set_selected_job_id.set(None);
+                                                                set_threads.set(Vec::new());
+                                                                set_jobs.set(Vec::new());
+                                                                set_sidebar_open.set(false);
+                                                                set_context_open.set(false);
+                                                            }
+                                                            Err(error) => {
+                                                                set_status_text.set(format!("Failed to sign out: {error}"));
+                                                            }
+                                                        }
+                                                    }
+                                                });
+                                            }
+                                        >
+                                            "Sign Out"
+                                        </button>
+                                    </div>
+
                                     <div class="drawer-body">
                                         <div class="sidebar-view" class:hidden=move || nav_mode.get() != NavMode::Chats data-testid="thread-nav-panel">
                                             <details class="context-panel" open>
