@@ -84,6 +84,18 @@ test("keeps the composer pinned while the message pane owns scroll", async ({ pa
   expect(nextComposerBox.y + nextComposerBox.height).toBeLessThanOrEqual(page.viewportSize().height);
 });
 
+test("shows created job activity in the thread when the backend only exposes job events", async ({
+  page,
+}) => {
+  await login(page, { password: "slice30-created" });
+
+  await expect(page.getByText("Job Update").first()).toBeVisible();
+  await expect(
+    page.getByText("Created job `job-030` for repo `elowen-ui` on device `laptop-edge-01`."),
+  ).toBeVisible();
+  await expect(page.getByText("Elowen is checking for an available edge device now.")).toBeVisible();
+});
+
 test("refreshes the job presentation from Job Update to Job Complete after realtime delivery", async ({
   page,
 }) => {

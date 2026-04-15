@@ -166,9 +166,10 @@ function applyRealtimeCompletion(session) {
   const completedMessage = {
     ...session.state.thread.messages.at(-1),
     content: "Browser automation summary ready. The UI shell now has deterministic browser coverage.",
-    status: "job_event:job:completed",
+    status: "job_event:job-slice-30:completed",
     payload_json: {
       job_result: {
+        job_id: "job-slice-30",
         details: "Playwright browser checks passed for auth, mobile details, sticky composer, and realtime behavior.",
       },
     },
@@ -279,6 +280,10 @@ function passwordToScenario(password) {
     return "default";
   }
 
+  if (password === "slice30-created") {
+    return "created-only";
+  }
+
   if (password === "slice30-realtime") {
     return "realtime";
   }
@@ -288,13 +293,14 @@ function passwordToScenario(password) {
 
 function createSession(scenario) {
   const now = "2026-04-15T14:40:00Z";
+  const isCreatedOnly = scenario === "created-only";
   const jobRecord = {
     id: "job-slice-30",
     short_id: "job-030",
     correlation_id: "corr-slice-30",
     thread_id: "thread-slice-30",
     title: "Browser automation rollout",
-    status: "running",
+    status: isCreatedOnly ? "probing" : "running",
     result: null,
     failure_class: null,
     repo_name: "elowen-ui",
@@ -320,7 +326,7 @@ function createSession(scenario) {
       title: "Slice 30 browser automation",
       status: "active",
       updated_at: now,
-      messages: createThreadMessages(now),
+      messages: createThreadMessages(now, { includeJobMessage: !isCreatedOnly }),
       jobs: [structuredClone(jobRecord)],
       related_notes: [
         {
@@ -341,35 +347,55 @@ function createSession(scenario) {
     jobs: [structuredClone(jobRecord)],
     job: {
       ...structuredClone(jobRecord),
-      execution_report_json: {
-        build: { status: "running" },
-        test: { status: "pending" },
-        diff_stat: "3 files changed, 88 insertions(+), 9 deletions(-)",
-        changed_files: ["src/app.rs", "README.md", "roadmap.md"],
-        git_status: ["M src/app.rs"],
-        last_message: "Browser suite scaffold is still being wired into the UI repo.",
-      },
-      summary: {
-        id: "summary-slice-30",
-        scope: "job",
-        source_id: "job-slice-30",
-        version: 1,
-        content: "Initial browser automation scaffold is in progress.",
-        created_at: now,
-      },
+      execution_report_json: isCreatedOnly
+        ? {}
+        : {
+            build: { status: "running" },
+            test: { status: "pending" },
+            diff_stat: "3 files changed, 88 insertions(+), 9 deletions(-)",
+            changed_files: ["src/app.rs", "README.md", "roadmap.md"],
+            git_status: ["M src/app.rs"],
+            last_message: "Browser suite scaffold is still being wired into the UI repo.",
+          },
+      summary: isCreatedOnly
+        ? null
+        : {
+            id: "summary-slice-30",
+            scope: "job",
+            source_id: "job-slice-30",
+            version: 1,
+            content: "Initial browser automation scaffold is in progress.",
+            created_at: now,
+          },
       approvals: [],
       related_notes: [],
-      events: [
-        {
-          id: "evt-job-running",
-          correlation_id: "corr-slice-30",
-          event_type: "job.running",
-          payload_json: {
-            phase: "browser-automation",
-          },
-          created_at: now,
-        },
-      ],
+      events: isCreatedOnly
+        ? [
+            {
+              id: "evt-job-created",
+              correlation_id: "corr-slice-30",
+              event_type: "job.created",
+              payload_json: {
+                repo_name: "elowen-ui",
+                device_id: "laptop-edge-01",
+                branch_name: "slice/30-ui-browser-automation",
+                base_branch: "main",
+                request_text: "Check whether any edge agents are currently available.",
+              },
+              created_at: now,
+            },
+          ]
+        : [
+            {
+              id: "evt-job-running",
+              correlation_id: "corr-slice-30",
+              event_type: "job.running",
+              payload_json: {
+                phase: "browser-automation",
+              },
+              created_at: now,
+            },
+          ],
     },
   };
 
@@ -384,7 +410,7 @@ function createSession(scenario) {
   };
 }
 
-function createThreadMessages(now) {
+function createThreadMessages(now, { includeJobMessage = true } = {}) {
   const messages = [];
 
   for (let index = 0; index < 6; index += 1) {
@@ -406,18 +432,22 @@ function createThreadMessages(now) {
     });
   }
 
-  messages.push({
-    id: "msg-job-update",
-    role: "assistant",
-    content: "Runner is still applying the requested UI automation changes.",
-    status: "job_event:job:running",
-    payload_json: {
-      job_result: {
-        details: "Waiting for the browser automation harness to finish its realtime verification pass.",
+  if (includeJobMessage) {
+    messages.push({
+      id: "msg-job-update",
+      role: "assistant",
+      content: "Runner is still applying the requested UI automation changes.",
+      status: "job_event:job-slice-30:running",
+      payload_json: {
+        job_result: {
+          job_id: "job-slice-30",
+          details:
+            "Waiting for the browser automation harness to finish its realtime verification pass.",
+        },
       },
-    },
-    created_at: now,
-  });
+      created_at: now,
+    });
+  }
 
   return messages;
 }

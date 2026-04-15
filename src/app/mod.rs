@@ -10,6 +10,8 @@ mod threads;
 
 use gloo_timers::future::TimeoutFuture;
 use leptos::{ev, html, prelude::*, task::spawn_local};
+use serde_json::{Value, json};
+use std::collections::HashSet;
 use wasm_bindgen::JsCast;
 use web_sys::EventSource;
 
@@ -75,6 +77,212 @@ fn append_thread_message_if_missing(messages: &mut Vec<MessageRecord>, message: 
     if messages.iter().all(|existing| existing.id != message.id) {
         messages.push(message);
     }
+}
+
+fn build_thread_timeline_messages(
+    thread: &ThreadDetail,
+    selected_job_detail: Option<&JobDetail>,
+) -> Vec<MessageRecord> {
+    let mut timeline = thread.messages.clone();
+    let mut existing_statuses = timeline
+        .iter()
+        .map(|message| message.status.clone())
+        .collect::<HashSet<_>>();
+
+    for job in &thread.jobs {
+        if !thread_message_mentions_job(&timeline, job)
+            && let Some(message) = synthetic_job_created_message(job, selected_job_detail)
+        {
+            existing_statuses.insert(message.status.clone());
+            timeline.push(message);
+        }
+
+        if let Some(job_detail) = selected_job_detail.filter(|detail| detail.job.id == job.id) {
+            for event in &job_detail.events {
+                let Some(message) = synthetic_job_event_message(job, job_detail, event) else {
+                    continue;
+                };
+
+                if existing_statuses.insert(message.status.clone()) {
+                    timeline.push(message);
+                }
+            }
+        }
+    }
+
+    timeline.sort_by(|left, right| {
+        left.created_at
+            .cmp(&right.created_at)
+            .then_with(|| left.id.cmp(&right.id))
+    });
+    timeline
+}
+
+fn thread_message_mentions_job(messages: &[MessageRecord], job: &JobRecord) -> bool {
+    let short_id_ref = format!("job `{}`", job.short_id);
+    let id_ref = format!("job `{}`", job.id);
+    let status_prefix = format!("job_event:{}:", job.id);
+
+    messages.iter().any(|message| {
+        message.status.starts_with(&status_prefix)
+            || message
+                .payload_json
+                .get("job_result")
+                .and_then(|value| value.get("job_id"))
+                .and_then(Value::as_str)
+                == Some(job.id.as_str())
+            || (message.status.starts_with("workflow.")
+                && (message.content.contains(&short_id_ref) || message.content.contains(&id_ref)))
+    })
+}
+
+fn synthetic_job_created_message(
+    job: &JobRecord,
+    selected_job_detail: Option<&JobDetail>,
+) -> Option<MessageRecord> {
+    let created_event = selected_job_detail
+        .filter(|detail| detail.job.id == job.id)
+        .and_then(|detail| {
+            detail
+                .events
+                .iter()
+                .find(|event| event.event_type == "job.created")
+        });
+    let created_at = created_event
+        .map(|event| event.created_at.clone())
+        .unwrap_or_else(|| job.created_at.clone());
+    let event_payload = created_event
+        .map(|event| event.payload_json.clone())
+        .unwrap_or_else(|| json!({}));
+    let device_id = event_payload
+        .get("device_id")
+        .and_then(Value::as_str)
+        .or(job.device_id.as_deref())
+        .unwrap_or("unassigned");
+    let request_text = event_payload
+        .get("request_text")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    let status_note = match job.status.as_str() {
+        "probing" => "Elowen is checking for an available edge device now.",
+        "pending" => "The job is queued and waiting to be dispatched.",
+        "dispatched" => "The job has been dispatched to an edge device.",
+        "accepted" => "An edge device accepted the job and is preparing to run it.",
+        "running" => "The job is now running.",
+        "awaiting_approval" => "The job is waiting for approval before the push step.",
+        "completed" => "The job has completed.",
+        "failed" => "The job failed.",
+        _ => "The job was created from this thread.",
+    };
+    let content = format!(
+        "Created job `{}` for repo `{}` on device `{}`. {}",
+        job.short_id, job.repo_name, device_id, status_note
+    );
+
+    let mut detail_lines = vec![
+        format!("Job: {}", job.short_id),
+        format!("Status: {}", job.status),
+        format!("Repository: {}", job.repo_name),
+        format!("Correlation: {}", job.correlation_id),
+    ];
+    if let Some(branch_name) = job.branch_name.as_deref().filter(|value| !value.is_empty()) {
+        detail_lines.push(format!("Branch: {branch_name}"));
+    }
+    if let Some(base_branch) = job.base_branch.as_deref().filter(|value| !value.is_empty()) {
+        detail_lines.push(format!("Base branch: {base_branch}"));
+    }
+    if let Some(request_text) = request_text {
+        detail_lines.push(format!("Request: {request_text}"));
+    }
+
+    Some(MessageRecord {
+        id: format!("synthetic-job-created-{}", job.id),
+        role: "assistant".to_string(),
+        content,
+        status: format!("job_event:{}:created", job.id),
+        payload_json: json!({
+            "job_result": {
+                "job_id": job.id,
+                "job_short_id": job.short_id,
+                "details": detail_lines.join("\n"),
+            },
+            "job_event": event_payload,
+        }),
+        created_at,
+    })
+}
+
+fn synthetic_job_event_message(
+    job: &JobRecord,
+    job_detail: &JobDetail,
+    event: &JobEventRecord,
+) -> Option<MessageRecord> {
+    let status_suffix = event.event_type.strip_prefix("job.")?.replace('.', "_");
+    if status_suffix == "created" {
+        return None;
+    }
+
+    let content = match event.event_type.as_str() {
+        "job.started" => format!(
+            "Started job `{}` on device `{}`.",
+            job.short_id,
+            job.device_id.as_deref().unwrap_or("unassigned")
+        ),
+        "job.awaiting_approval" => format!(
+            "Job `{}` is waiting for push approval for branch `{}`.",
+            job.short_id,
+            job.branch_name.as_deref().unwrap_or("unknown")
+        ),
+        "job.push_started" => format!(
+            "Pushing branch `{}` for job `{}`.",
+            job.branch_name.as_deref().unwrap_or("unknown"),
+            job.short_id
+        ),
+        "job.push_completed" => format!(
+            "Finished pushing branch `{}` for job `{}`.",
+            job.branch_name.as_deref().unwrap_or("unknown"),
+            job.short_id
+        ),
+        "job.completed" if job_detail.job.result.as_deref() == Some("success") => job_detail
+            .summary
+            .as_ref()
+            .map(|summary| summary.content.trim().to_string())
+            .filter(|value| !value.is_empty())
+            .unwrap_or_else(|| format!("Job `{}` completed successfully.", job.short_id)),
+        "job.completed" => format!(
+            "Job `{}` completed with result `{}`.",
+            job.short_id,
+            job_detail.job.result.as_deref().unwrap_or("unknown")
+        ),
+        "job.failed" => format!("Job `{}` failed.", job.short_id),
+        _ => format!("Job `{}` reported `{}`.", job.short_id, event.event_type),
+    };
+
+    let details = format!(
+        "Job: {}\nStatus: {}\nCorrelation: {}\nEvent: {}\nPayload:\n{}",
+        job.short_id,
+        job_detail.job.status,
+        event.correlation_id,
+        event.event_type,
+        format_json_value(&event.payload_json),
+    );
+
+    Some(MessageRecord {
+        id: format!("synthetic-job-event-{}", event.id),
+        role: "assistant".to_string(),
+        content,
+        status: format!("job_event:{}:{status_suffix}", job.id),
+        payload_json: json!({
+            "job_result": {
+                "job_id": job.id,
+                "job_short_id": job.short_id,
+                "details": details,
+            },
+            "job_event": event.payload_json,
+        }),
+        created_at: event.created_at.clone(),
+    })
 }
 
 fn clear_pending_chat_submission(
@@ -495,7 +703,9 @@ pub fn App() -> impl IntoView {
         let _ = selected_thread_id.get();
         let _message_count = selected_thread
             .get()
-            .map(|thread| thread.messages.len())
+            .map(|thread| {
+                build_thread_timeline_messages(&thread, selected_job_detail.get().as_ref()).len()
+            })
             .unwrap_or_default();
         let _pending_thread = pending_chat_submission
             .get()
@@ -1114,7 +1324,8 @@ pub fn App() -> impl IntoView {
                                             let pending_indicator_thread_id = thread_id.clone();
                                             let thread_record = thread.thread.clone();
                                             let jobs = thread.jobs.clone();
-                                            let messages = thread.messages.clone();
+                                            let messages =
+                                                build_thread_timeline_messages(&thread, selected_job_detail.get().as_ref());
                                             let thread_notes = thread.related_notes.clone();
 
                                             view! {
