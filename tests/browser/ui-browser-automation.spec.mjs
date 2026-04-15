@@ -3,10 +3,10 @@ import { expect, test } from "@playwright/test";
 test("signs into the protected workspace and signs back out", async ({ page }) => {
   await login(page);
 
-  await expect(page.getByText("Playwright Operator")).toBeVisible();
+  await expect(page.getByTestId("operator-chip")).toHaveText("Playwright Operator");
   await expect(page.getByText("Slice 30 browser automation").first()).toBeVisible();
 
-  await page.getByRole("button", { name: "Sign Out" }).click();
+  await page.getByTestId("signout-button").click();
   await expect(page.getByTestId("auth-form")).toBeVisible();
 });
 
@@ -16,7 +16,7 @@ test.describe("mobile details interactions", () => {
   test("opens and dismisses the mobile drawer and details sheet backdrops", async ({ page }) => {
     await login(page);
 
-    await page.getByRole("button", { name: "Threads", exact: true }).click();
+    await page.getByTestId("mobile-threads").click();
     await expect
       .poll(() => openState(page.getByTestId("sidebar-backdrop")))
       .toBe(true);
@@ -26,7 +26,7 @@ test.describe("mobile details interactions", () => {
       .poll(() => openState(page.getByTestId("sidebar-backdrop")))
       .toBe(false);
 
-    await page.getByRole("button", { name: "Details" }).click();
+    await page.getByTestId("mobile-details").click();
     await expect
       .poll(() => openState(page.getByTestId("context-backdrop")))
       .toBe(true);

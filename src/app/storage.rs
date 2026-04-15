@@ -1,9 +1,6 @@
-fn local_storage() -> Option<web_sys::Storage> {
-    web_sys::window().and_then(|window| window.local_storage().ok().flatten())
-}
-
 pub(super) fn read_storage(key: &str) -> Option<String> {
-    local_storage()
+    web_sys::window()
+        .and_then(|window| window.local_storage().ok().flatten())
         .and_then(|storage| storage.get_item(key).ok().flatten())
         .filter(|value| !value.is_empty())
 }
@@ -13,13 +10,17 @@ pub(super) fn read_bool_storage(key: &str) -> Option<bool> {
 }
 
 pub(super) fn write_storage(key: &str, value: &str) {
-    if let Some(storage) = local_storage() {
+    if let Some(storage) =
+        web_sys::window().and_then(|window| window.local_storage().ok().flatten())
+    {
         let _ = storage.set_item(key, value);
     }
 }
 
 pub(super) fn write_optional_storage(key: &str, value: Option<&str>) {
-    if let Some(storage) = local_storage() {
+    if let Some(storage) =
+        web_sys::window().and_then(|window| window.local_storage().ok().flatten())
+    {
         if let Some(value) = value.filter(|value| !value.is_empty()) {
             let _ = storage.set_item(key, value);
         } else {

@@ -1,6 +1,10 @@
+use std::{cell::RefCell, rc::Rc};
+
+use gloo_timers::callback::Timeout;
 use leptos::prelude::*;
 use web_sys::EventSource;
 
+use super::reconnect::ReconnectController;
 use crate::models::{AuthSessionStatus, JobDetail, JobRecord, ThreadDetail, ThreadSummary};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -56,31 +60,37 @@ impl RealtimeStatus {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
+pub(super) struct RealtimeRuntime {
+    pub(super) reconnect_controller: Rc<RefCell<ReconnectController>>,
+    pub(super) reconnect_timer: Rc<RefCell<Option<Timeout>>>,
+}
+
+impl Default for RealtimeRuntime {
+    fn default() -> Self {
+        Self {
+            reconnect_controller: Rc::new(RefCell::new(ReconnectController::default())),
+            reconnect_timer: Rc::new(RefCell::new(None)),
+        }
+    }
+}
+
+#[derive(Clone)]
 pub(super) struct UiEventSyncHandles {
     pub(super) selected_thread_id: ReadSignal<Option<String>>,
     pub(super) selected_job_id: ReadSignal<Option<String>>,
+    pub(super) event_source: ReadSignal<Option<EventSource>>,
     pub(super) set_threads: WriteSignal<Vec<ThreadSummary>>,
     pub(super) set_selected_thread_id: WriteSignal<Option<String>>,
     pub(super) set_selected_thread: WriteSignal<Option<ThreadDetail>>,
     pub(super) set_jobs: WriteSignal<Vec<JobRecord>>,
+    pub(super) set_selected_job_id: WriteSignal<Option<String>>,
     pub(super) set_selected_job_detail: WriteSignal<Option<JobDetail>>,
     pub(super) set_auth_session: WriteSignal<Option<AuthSessionStatus>>,
     pub(super) set_status_text: WriteSignal<String>,
     pub(super) set_realtime_status: WriteSignal<RealtimeStatus>,
     pub(super) set_event_source: WriteSignal<Option<EventSource>>,
-}
-
-#[derive(Clone, Copy)]
-pub(super) struct SignedOutHandles {
-    pub(super) set_auth_session: WriteSignal<Option<AuthSessionStatus>>,
-    pub(super) set_status_text: WriteSignal<String>,
-    pub(super) set_selected_thread: WriteSignal<Option<ThreadDetail>>,
-    pub(super) set_selected_thread_id: WriteSignal<Option<String>>,
-    pub(super) set_selected_job_detail: WriteSignal<Option<JobDetail>>,
-    pub(super) set_selected_job_id: WriteSignal<Option<String>>,
-    pub(super) set_threads: WriteSignal<Vec<ThreadSummary>>,
-    pub(super) set_jobs: WriteSignal<Vec<JobRecord>>,
+    pub(super) runtime: RealtimeRuntime,
 }
 
 pub(super) const STORAGE_SELECTED_THREAD_ID: &str = "elowen.selected_thread_id";
