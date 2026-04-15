@@ -654,6 +654,7 @@ button[type="submit"]:hover {
     white-space: pre-wrap;
     line-height: 1.55;
     color: var(--ink);
+    overflow-wrap: anywhere;
 }
 
 .mode-badge {
@@ -681,9 +682,20 @@ button[type="submit"]:hover {
     color: #d5dcea;
 }
 
+.mode-badge.job-update.running,
+.mode-badge.job-update.pushing {
+    background: rgba(47, 128, 255, 0.14);
+    color: #b8d2ff;
+}
+
 .mode-badge.job-complete {
     background: rgba(46, 204, 113, 0.12);
     color: #9ce6b8;
+}
+
+.mode-badge.job-complete.awaiting-approval {
+    background: rgba(234, 179, 8, 0.14);
+    color: #ffe28a;
 }
 
 .mode-badge.job-complete.failed {
@@ -787,10 +799,68 @@ button[type="submit"]:hover {
     gap: 12px;
 }
 
+.result-message {
+    background: linear-gradient(180deg, rgba(25, 34, 41, 0.98) 0%, rgba(21, 28, 33, 0.96) 100%);
+    border-color: rgba(88, 190, 132, 0.24);
+}
+
+.message.mode-job-complete.failed .result-message {
+    background: linear-gradient(180deg, rgba(48, 28, 34, 0.98) 0%, rgba(38, 24, 29, 0.96) 100%);
+    border-color: rgba(255, 107, 107, 0.26);
+}
+
+.message.mode-job-complete .result-summary {
+    font-size: 0.96rem;
+}
+
+.result-details {
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    background: rgba(255, 255, 255, 0.03);
+    overflow: hidden;
+}
+
+.result-details summary {
+    cursor: pointer;
+    list-style: none;
+    padding: 10px 12px;
+    font-size: 0.74rem;
+    font-weight: 700;
+    color: var(--ink-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+}
+
+.result-details summary::-webkit-details-marker {
+    display: none;
+}
+
+.result-details[open] summary {
+    border-bottom: 1px solid var(--line);
+}
+
+.result-details pre {
+    margin: 0;
+    padding: 12px;
+}
+
 .draft-rationale {
     margin: 0;
     color: var(--ink-muted);
     font-size: 0.82rem;
+}
+
+.draft-intent {
+    display: inline-flex;
+    align-items: center;
+    min-height: 30px;
+    padding: 0 10px;
+    border-radius: var(--radius-pill);
+    border: 1px solid var(--line);
+    background: rgba(47, 128, 255, 0.12);
+    color: #b8d2ff;
+    font-size: 0.74rem;
+    font-weight: 700;
 }
 
 .draft-grid,
@@ -808,6 +878,21 @@ button[type="submit"]:hover {
 
 .draft-field strong {
     font-size: 0.8rem;
+}
+
+.draft-field span {
+    color: var(--ink-soft);
+    line-height: 1.45;
+    overflow-wrap: anywhere;
+}
+
+.draft-request {
+    display: grid;
+    gap: 8px;
+}
+
+.draft-request pre {
+    max-height: 220px;
 }
 
 .status-badge {
@@ -956,6 +1041,13 @@ button[type="submit"]:hover {
     border-radius: 24px;
     resize: none;
     overflow-y: hidden;
+}
+
+.composer-hint {
+    margin: 0;
+    padding: 0 4px;
+    color: var(--ink-muted);
+    font-size: 0.76rem;
 }
 
 .composer-send {

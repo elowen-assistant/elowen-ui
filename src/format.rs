@@ -1,6 +1,8 @@
 //! Pure UI formatting helpers.
 
+use js_sys::Date;
 use serde_json::Value;
+use wasm_bindgen::JsValue;
 
 use crate::models::{ExecutionDraft, ExecutionIntent, MessageRecord};
 
@@ -72,6 +74,25 @@ fn is_job_completion_status(status: &str) -> bool {
         || status.ends_with(":push_completed")
 }
 
+pub(crate) fn message_is_result_surface(message: &MessageRecord) -> bool {
+    is_job_completion_status(&message.status) || message.status.ends_with(":awaiting_approval")
+}
+
+pub(crate) fn message_timestamp_label(value: &str) -> String {
+    let date = Date::new(&JsValue::from_str(value));
+    if date.get_time().is_nan() {
+        return value.to_string();
+    }
+
+    let now = Date::new_0();
+    let time_label = format_local_time(&date);
+    if is_same_local_day(&date, &now) {
+        time_label
+    } else {
+        format!("{} {}", format_local_month_day(&date), time_label)
+    }
+}
+
 pub(crate) fn execution_intent_label(intent: &ExecutionIntent) -> &'static str {
     match intent {
         ExecutionIntent::WorkspaceChange => "Workspace Change",
@@ -110,8 +131,14 @@ pub(crate) fn message_mode_badge(message: &MessageRecord) -> Option<(&'static st
         Some(("job-complete failed", "Job Failed"))
     } else if message.status.ends_with(":push_completed") {
         Some(("job-complete", "Push Complete"))
+    } else if message.status.ends_with(":awaiting_approval") {
+        Some(("job-complete awaiting-approval", "Ready To Push"))
     } else if message.status.ends_with(":completed") {
         Some(("job-complete", "Job Complete"))
+    } else if message.status.ends_with(":push_started") {
+        Some(("job-update pushing", "Job Update"))
+    } else if message.status.ends_with(":started") || message.status.ends_with(":running") {
+        Some(("job-update running", "Job Update"))
     } else if message.status.starts_with("job_event:") {
         Some(("job-update", "Job Update"))
     } else if message.role == "system" {
@@ -172,11 +199,49 @@ pub(crate) fn format_string_list(values: &[String]) -> String {
     }
 }
 
+fn is_same_local_day(left: &Date, right: &Date) -> bool {
+    left.get_full_year() == right.get_full_year()
+        && left.get_month() == right.get_month()
+        && left.get_date() == right.get_date()
+}
+
+fn format_local_time(date: &Date) -> String {
+    let hours = date.get_hours();
+    let minutes = date.get_minutes();
+    let period = if hours >= 12 { "PM" } else { "AM" };
+    let display_hour = match hours % 12 {
+        0 => 12,
+        hour => hour,
+    };
+
+    format!("{display_hour}:{minutes:02} {period}")
+}
+
+fn format_local_month_day(date: &Date) -> String {
+    let month = match date.get_month() {
+        0 => "Jan",
+        1 => "Feb",
+        2 => "Mar",
+        3 => "Apr",
+        4 => "May",
+        5 => "Jun",
+        6 => "Jul",
+        7 => "Aug",
+        8 => "Sep",
+        9 => "Oct",
+        10 => "Nov",
+        11 => "Dec",
+        _ => "Date",
+    };
+
+    format!("{month} {}", date.get_date())
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
-        execution_intent_label, message_execution_draft, message_mode_badge, message_mode_class,
-        message_result_details, report_last_message,
+        execution_intent_label, message_execution_draft, message_is_result_surface,
+        message_mode_badge, message_mode_class, message_result_details, report_last_message,
     };
     use crate::models::ExecutionIntent;
     use crate::models::MessageRecord;
@@ -279,7 +344,25 @@ mod tests {
         assert_eq!(message_mode_class(&message), "mode-job-update");
         assert_eq!(
             message_mode_badge(&message),
-            Some(("job-update", "Job Update"))
+            Some(("job-update running", "Job Update"))
+        );
+    }
+
+    #[test]
+    fn treats_awaiting_approval_as_result_surface() {
+        let message = MessageRecord {
+            id: "m5".into(),
+            role: "assistant".into(),
+            content: "awaiting".into(),
+            status: "job_event:job:awaiting_approval".into(),
+            payload_json: json!({}),
+            created_at: String::new(),
+        };
+
+        assert!(message_is_result_surface(&message));
+        assert_eq!(
+            message_mode_badge(&message),
+            Some(("job-complete awaiting-approval", "Ready To Push"))
         );
     }
 }

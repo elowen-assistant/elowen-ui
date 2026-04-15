@@ -118,6 +118,20 @@ async function handleApiRequest(req, res, pathname) {
     return;
   }
 
+  if (pathname === `/api/v1/threads/${session.state.thread.id}/chat` && req.method === "POST") {
+    const body = await readJson(req);
+    const content = String(body?.content ?? "").trim();
+
+    if (!content) {
+      writeJson(res, 400, { error: "message content is required" });
+      return;
+    }
+
+    const reply = appendChatExchange(session, content);
+    writeJson(res, 201, reply);
+    return;
+  }
+
   if (pathname === `/api/v1/jobs/${session.state.job.id}` && req.method === "GET") {
     writeJson(res, 200, session.state.job);
     return;
@@ -288,24 +302,31 @@ function passwordToScenario(password) {
     return "realtime";
   }
 
+  if (password === "slice31-draft") {
+    return "draft";
+  }
+
   return null;
 }
 
 function createSession(scenario) {
   const now = "2026-04-15T14:40:00Z";
   const isCreatedOnly = scenario === "created-only";
+  const isDraft = scenario === "draft";
   const jobRecord = {
-    id: "job-slice-30",
-    short_id: "job-030",
-    correlation_id: "corr-slice-30",
-    thread_id: "thread-slice-30",
-    title: "Browser automation rollout",
-    status: isCreatedOnly ? "probing" : "running",
-    result: null,
+    id: isDraft ? "job-slice-31" : "job-slice-30",
+    short_id: isDraft ? "job-031" : "job-030",
+    correlation_id: isDraft ? "corr-slice-31" : "corr-slice-30",
+    thread_id: isDraft ? "thread-slice-31" : "thread-slice-30",
+    title: isDraft ? "Chat surface polish" : "Browser automation rollout",
+    status: isCreatedOnly ? "probing" : isDraft ? "awaiting_approval" : "running",
+    result: isDraft ? "success" : null,
     failure_class: null,
     repo_name: "elowen-ui",
     device_id: "laptop-edge-01",
-    branch_name: "slice/30-ui-browser-automation",
+    branch_name: isDraft
+      ? "slice/31-chat-surface-and-draft-ux-polish"
+      : "slice/30-ui-browser-automation",
     base_branch: "main",
     created_at: "2026-04-15T14:10:00Z",
     updated_at: now,
@@ -314,31 +335,37 @@ function createSession(scenario) {
   const state = {
     threads: [
       {
-        id: "thread-slice-30",
-        title: "Slice 30 browser automation",
+        id: isDraft ? "thread-slice-31" : "thread-slice-30",
+        title: isDraft ? "Slice 31 draft polish" : "Slice 30 browser automation",
         status: "active",
-        message_count: 15,
+        message_count: isDraft ? 17 : 15,
         updated_at: now,
       },
     ],
     thread: {
-      id: "thread-slice-30",
-      title: "Slice 30 browser automation",
+      id: isDraft ? "thread-slice-31" : "thread-slice-30",
+      title: isDraft ? "Slice 31 draft polish" : "Slice 30 browser automation",
       status: "active",
       updated_at: now,
-      messages: createThreadMessages(now, { includeJobMessage: !isCreatedOnly }),
+      messages: createThreadMessages(now, {
+        includeJobMessage: !isCreatedOnly,
+        includeDraftMessage: isDraft,
+        usePolishedResult: isDraft,
+      }),
       jobs: [structuredClone(jobRecord)],
       related_notes: [
         {
-          note_id: "note-slice-30",
-          title: "Slice 30 acceptance checklist",
-          slug: "slice-30-acceptance-checklist",
-          summary: "Focus on auth, mobile layout, sticky composer, and realtime presentation.",
-          tags: ["slice", "browser-automation"],
+          note_id: isDraft ? "note-slice-31" : "note-slice-30",
+          title: isDraft ? "Slice 31 polish checklist" : "Slice 30 acceptance checklist",
+          slug: isDraft ? "slice-31-polish-checklist" : "slice-30-acceptance-checklist",
+          summary: isDraft
+            ? "Focus on draft clarity, result disclosure, timestamps, and composer shortcuts."
+            : "Focus on auth, mobile layout, sticky composer, and realtime presentation.",
+          tags: isDraft ? ["slice", "chat-polish"] : ["slice", "browser-automation"],
           aliases: [],
           note_type: "roadmap-checklist",
           source_kind: "roadmap",
-          source_id: "slice-30",
+          source_id: isDraft ? "slice-31" : "slice-30",
           current_revision_id: "rev-1",
           updated_at: now,
         },
@@ -349,6 +376,16 @@ function createSession(scenario) {
       ...structuredClone(jobRecord),
       execution_report_json: isCreatedOnly
         ? {}
+        : isDraft
+          ? {
+              build: { status: "success" },
+              test: { status: "success" },
+              diff_stat: "4 files changed, 96 insertions(+), 14 deletions(-)",
+              changed_files: ["src/app/mod.rs", "src/format.rs", "public/app.css", "tests/browser/start-server.mjs"],
+              git_status: ["M src/app/mod.rs", "M src/format.rs", "M public/app.css"],
+              last_message:
+                "Chat surface polish is ready for review. The transcript now separates activity from final results more clearly.",
+            }
         : {
             build: { status: "running" },
             test: { status: "pending" },
@@ -359,6 +396,16 @@ function createSession(scenario) {
           },
       summary: isCreatedOnly
         ? null
+        : isDraft
+          ? {
+              id: "summary-slice-31",
+              scope: "job",
+              source_id: "job-slice-31",
+              version: 1,
+              content:
+                "Polished the chat transcript, localized timestamps, and moved operational detail behind disclosure by default.",
+              created_at: now,
+            }
         : {
             id: "summary-slice-30",
             scope: "job",
@@ -387,12 +434,16 @@ function createSession(scenario) {
           ]
         : [
             {
-              id: "evt-job-running",
-              correlation_id: "corr-slice-30",
-              event_type: "job.running",
-              payload_json: {
-                phase: "browser-automation",
-              },
+              id: isDraft ? "evt-job-awaiting-approval" : "evt-job-running",
+              correlation_id: isDraft ? "corr-slice-31" : "corr-slice-30",
+              event_type: isDraft ? "job.awaiting_approval" : "job.running",
+              payload_json: isDraft
+                ? {
+                    summary: "Push approval is pending.",
+                  }
+                : {
+                    phase: "browser-automation",
+                  },
               created_at: now,
             },
           ],
@@ -403,14 +454,22 @@ function createSession(scenario) {
     id: randomUUID(),
     authenticated: true,
     scenario,
-    operatorLabel: scenario === "realtime" ? "Realtime Operator" : "Playwright Operator",
+    operatorLabel:
+      scenario === "realtime"
+        ? "Realtime Operator"
+        : scenario === "draft"
+          ? "Draft Operator"
+          : "Playwright Operator",
     eventClients: new Set(),
     realtimeDelivered: false,
     state,
   };
 }
 
-function createThreadMessages(now, { includeJobMessage = true } = {}) {
+function createThreadMessages(
+  now,
+  { includeJobMessage = true, includeDraftMessage = false, usePolishedResult = false } = {},
+) {
   const messages = [];
 
   for (let index = 0; index < 6; index += 1) {
@@ -434,22 +493,103 @@ function createThreadMessages(now, { includeJobMessage = true } = {}) {
 
   if (includeJobMessage) {
     messages.push({
-      id: "msg-job-update",
+      id: usePolishedResult ? "msg-job-result" : "msg-job-update",
       role: "assistant",
-      content: "Runner is still applying the requested UI automation changes.",
-      status: "job_event:job-slice-30:running",
+      content: usePolishedResult
+        ? "Chat surface polish is ready for review. The transcript now separates activity from final results more clearly."
+        : "Runner is still applying the requested UI automation changes.",
+      status: usePolishedResult
+        ? "job_event:job-slice-31:awaiting_approval"
+        : "job_event:job-slice-30:running",
       payload_json: {
         job_result: {
-          job_id: "job-slice-30",
-          details:
-            "Waiting for the browser automation harness to finish its realtime verification pass.",
+          job_id: usePolishedResult ? "job-slice-31" : "job-slice-30",
+          details: usePolishedResult
+            ? "Build: success\nTest: success\nChanged entries: 4\n\nPush approval is pending while the final branch waits for review."
+            : "Waiting for the browser automation harness to finish its realtime verification pass.",
         },
       },
       created_at: now,
     });
   }
 
+  if (includeDraftMessage) {
+    messages.push({
+      id: "msg-draft-ready",
+      role: "assistant",
+      content:
+        "I stayed in conversational mode and prepared a clean dispatch handoff below so you can review it before dispatching.",
+      status: "conversation.reply",
+      payload_json: {
+        execution_draft: {
+          title: "Polish chat transcript surfaces",
+          repo_name: "elowen-ui",
+          base_branch: "main",
+          request_text:
+            "Tighten the chat transcript, localize timestamps, keep operational result details behind disclosure by default, and preserve the pinned composer behavior.",
+          execution_intent: "workspace_change",
+          source_message_id: "msg-user-5",
+          source_role: "user",
+          rationale: "Prepared from the latest user request so it can be reviewed before dispatch.",
+        },
+      },
+      created_at: "2026-04-15T14:42:00Z",
+    });
+  }
+
   return messages;
+}
+
+function appendChatExchange(session, content) {
+  const nextUpdatedAt = "2026-04-15T14:55:00Z";
+  const userMessage = {
+    id: `msg-user-${session.state.thread.messages.length + 1}`,
+    role: "user",
+    content,
+    status: "conversation.user",
+    payload_json: {},
+    created_at: nextUpdatedAt,
+  };
+  const assistantMessage = {
+    id: `msg-assistant-${session.state.thread.messages.length + 2}`,
+    role: "assistant",
+    content:
+      "I stayed in conversational mode and prepared a clean dispatch handoff below so you can refine it before dispatching.",
+    status: "conversation.reply",
+    payload_json: {
+      execution_draft: {
+        title: "Polish transcript timestamps",
+        repo_name: "elowen-ui",
+        base_branch: "main",
+        request_text: content,
+        execution_intent: "workspace_change",
+        source_message_id: userMessage.id,
+        source_role: "user",
+        rationale: "Prepared from the latest user request so it can be reviewed before dispatch.",
+      },
+    },
+    created_at: nextUpdatedAt,
+  };
+
+  session.state.thread = {
+    ...session.state.thread,
+    updated_at: nextUpdatedAt,
+    messages: [...session.state.thread.messages, userMessage, assistantMessage],
+  };
+  session.state.threads = session.state.threads.map((thread) =>
+    thread.id === session.state.thread.id
+      ? {
+          ...thread,
+          updated_at: nextUpdatedAt,
+          message_count: thread.message_count + 2,
+        }
+      : thread,
+  );
+
+  return {
+    user_message: userMessage,
+    assistant_message: assistantMessage,
+  };
 }
 
 function authenticatedSession(session) {

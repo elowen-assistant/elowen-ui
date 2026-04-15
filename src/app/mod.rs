@@ -23,9 +23,9 @@ use crate::{
     },
     format::{
         approval_status_note, execution_intent_label, format_json_value, format_string_list,
-        message_execution_draft, message_mode_badge, message_mode_class, message_result_details,
-        report_array_strings, report_diff_stat, report_last_message, report_status_label,
-        status_badge_class,
+        message_execution_draft, message_is_result_surface, message_mode_badge, message_mode_class,
+        message_result_details, message_timestamp_label, report_array_strings, report_diff_stat,
+        report_last_message, report_status_label, status_badge_class,
     },
     models::*,
 };
@@ -1389,8 +1389,10 @@ pub fn App() -> impl IntoView {
                                                                         let message_role = message.role.clone();
                                                                         let execution_draft = message_execution_draft(&message);
                                                                         let result_details = message_result_details(&message);
+                                                                        let is_result_surface = message_is_result_surface(&message);
                                                                         let message_mode_class = message_mode_class(&message);
                                                                         let message_mode_badge = message_mode_badge(&message);
+                                                                        let timestamp_label = message_timestamp_label(&message.created_at);
                                                                         let can_dispatch = message_role == "user"
                                                                             || (message_role == "assistant"
                                                                                 && message.status == "conversation.reply"
@@ -1401,7 +1403,7 @@ pub fn App() -> impl IntoView {
                                                                             "Dispatch This Request"
                                                                         };
                                                                         let has_inspector =
-                                                                            result_details.is_some() || execution_draft.is_some() || can_dispatch;
+                                                                            (result_details.is_some() && !is_result_surface) || can_dispatch;
                                                                         let row_class = match message.role.as_str() {
                                                                             "user" => "message-row outgoing",
                                                                             "system" => "message-row incoming system",
@@ -1429,91 +1431,135 @@ pub fn App() -> impl IntoView {
                                                                                                 view! { <span class=format!("mode-badge {}", badge_class)>{label}</span> }
                                                                                             })}
                                                                                         </div>
-                                                                                        <span class="message-time">{message.created_at.clone()}</span>
+                                                                                        <span class="message-time">{timestamp_label}</span>
                                                                                     </header>
-                                                                                    <p class="message-body">{message.content.clone()}</p>
+                                                                                    {if is_result_surface {
+                                                                                        let details = result_details.clone();
+                                                                                        let result_label = if message.status.ends_with(":awaiting_approval") {
+                                                                                            "Ready For Review"
+                                                                                        } else if message.status.ends_with(":failed") {
+                                                                                            "Failure Summary"
+                                                                                        } else {
+                                                                                            "Result Summary"
+                                                                                        };
+                                                                                        view! {
+                                                                                            <section class="result-message">
+                                                                                                <p class="eyebrow">{result_label}</p>
+                                                                                                <p class="message-body result-summary">{message.content.clone()}</p>
+                                                                                                {details.map(|details| {
+                                                                                                    view! {
+                                                                                                        <details class="result-details">
+                                                                                                            <summary>"Operational Details"</summary>
+                                                                                                            <pre>{details}</pre>
+                                                                                                        </details>
+                                                                                                    }
+                                                                                                })}
+                                                                                            </section>
+                                                                                        }.into_any()
+                                                                                    } else {
+                                                                                        view! {
+                                                                                            <p class="message-body">{message.content.clone()}</p>
+                                                                                        }.into_any()
+                                                                                    }}
+                                                                                    {execution_draft.clone().map(|draft| {
+                                                                                        let thread_id = message_actions_thread_id.clone();
+                                                                                        let source_message_id = message_id.clone();
+                                                                                        let source_role = draft.source_role.clone();
+                                                                                        let title = draft.title.clone();
+                                                                                        let repo_name = draft.repo_name.unwrap_or_default();
+                                                                                        let base_branch = draft.base_branch.clone();
+                                                                                        let request_text = draft.request_text.clone();
+                                                                                        let execution_intent = draft.execution_intent.clone();
+                                                                                        let repo_display = if repo_name.trim().is_empty() {
+                                                                                            "Choose a repository before dispatch".to_string()
+                                                                                        } else {
+                                                                                            repo_name.clone()
+                                                                                        };
+                                                                                        view! {
+                                                                                            <section class="execution-draft">
+                                                                                                <header>
+                                                                                                    <div>
+                                                                                                        <p class="eyebrow">"Execution Draft"</p>
+                                                                                                        <h4>{title.clone()}</h4>
+                                                                                                        <p class="draft-rationale">{draft.rationale}</p>
+                                                                                                    </div>
+                                                                                                    <span class="draft-intent">{execution_intent_label(&execution_intent)}</span>
+                                                                                                </header>
+                                                                                                <div class="draft-grid">
+                                                                                                    <div class="draft-field">
+                                                                                                        <strong>"Repository"</strong>
+                                                                                                        <span>{repo_display}</span>
+                                                                                                    </div>
+                                                                                                    <div class="draft-field">
+                                                                                                        <strong>"Base Branch"</strong>
+                                                                                                        <span>{base_branch.clone()}</span>
+                                                                                                    </div>
+                                                                                                    <div class="draft-field">
+                                                                                                        <strong>"Prepared From"</strong>
+                                                                                                        <span>{format!("{} message", draft.source_role)}</span>
+                                                                                                    </div>
+                                                                                                </div>
+                                                                                                <section class="draft-request">
+                                                                                                    <p class="eyebrow">"Dispatch Request"</p>
+                                                                                                    <pre>{request_text.clone()}</pre>
+                                                                                                </section>
+                                                                                                <div class="draft-actions">
+                                                                                                    <button
+                                                                                                        type="button"
+                                                                                                        on:click=move |_| {
+                                                                                                            if repo_name.trim().is_empty() || request_text.trim().is_empty() {
+                                                                                                                set_status_text.set("Draft repository and request text are required before dispatching.".to_string());
+                                                                                                                return;
+                                                                                                            }
+                                                                                                            spawn_local({
+                                                                                                                let set_selected_thread = set_selected_thread;
+                                                                                                                let set_preferred_job_id = set_preferred_job_id;
+                                                                                                                let set_selected_job_id = set_selected_job_id;
+                                                                                                                let set_status_text = set_status_text;
+                                                                                                                let set_threads = set_threads;
+                                                                                                                let set_jobs = set_jobs;
+                                                                                                                let selected_thread_id = selected_thread_id;
+                                                                                                                let set_selected_thread_id = set_selected_thread_id;
+                                                                                                                let thread_id = thread_id.clone();
+                                                                                                                let source_message_id = source_message_id.clone();
+                                                                                                                let source_role = source_role.clone();
+                                                                                                                let title = title.clone();
+                                                                                                                let repo_name = repo_name.clone();
+                                                                                                                let base_branch = base_branch.clone();
+                                                                                                                let request_text = request_text.clone();
+                                                                                                                let execution_intent = execution_intent.clone();
+                                                                                                                async move {
+                                                                                                                    match dispatch_thread_message(&thread_id, &source_message_id, &title, &repo_name, &base_branch, Some(request_text), Some(execution_intent)).await {
+                                                                                                                        Ok(job) => {
+                                                                                                                            set_preferred_job_id.set(Some(job.id.clone()));
+                                                                                                                            set_selected_job_id.set(Some(job.id.clone()));
+                                                                                                                            set_status_text.set(format!("Promoted {} draft into job {}.", source_role, job.short_id));
+                                                                                                                            let _ = sync_selected_thread(thread_id.clone(), set_selected_thread, set_status_text).await;
+                                                                                                                            let _ = sync_thread_list(set_threads, selected_thread_id, set_selected_thread_id, set_status_text).await;
+                                                                                                                            let _ = sync_job_list(set_jobs).await;
+                                                                                                                        }
+                                                                                                                        Err(error) => set_status_text.set(format!("Failed to dispatch execution draft: {error}")),
+                                                                                                                    }
+                                                                                                                }
+                                                                                                            });
+                                                                                                        }
+                                                                                                    >
+                                                                                                        "Dispatch Draft"
+                                                                                                    </button>
+                                                                                                </div>
+                                                                                            </section>
+                                                                                        }
+                                                                                    })}
                                                                                     {if has_inspector {
                                                                                         view! {
                                                                                             <details class="message-inspector">
                                                                                                 <summary>"Inspect"</summary>
                                                                                                 <div class="message-inspector-body">
-                                                                                                    {result_details.clone().map(|details| {
+                                                                                                    {result_details.clone().filter(|_| !is_result_surface).map(|details| {
                                                                                                         view! {
                                                                                                             <section class="summary-block">
                                                                                                                 <p class="eyebrow">"Result Details"</p>
                                                                                                                 <pre>{details}</pre>
-                                                                                                            </section>
-                                                                                                        }
-                                                                                                    })}
-                                                                                                    {execution_draft.clone().map(|draft| {
-                                                                                                        let thread_id = message_actions_thread_id.clone();
-                                                                                                        let source_message_id = message_id.clone();
-                                                                                                        let source_role = draft.source_role.clone();
-                                                                                                        let title = draft.title.clone();
-                                                                                                        let repo_name = draft.repo_name.unwrap_or_default();
-                                                                                                        let base_branch = draft.base_branch.clone();
-                                                                                                        let request_text = draft.request_text.clone();
-                                                                                                        let execution_intent = draft.execution_intent.clone();
-                                                                                                        view! {
-                                                                                                            <section class="execution-draft">
-                                                                                                                <header>
-                                                                                                                    <div>
-                                                                                                                        <h4>"Execution Draft"</h4>
-                                                                                                                        <p class="draft-rationale">{draft.rationale}</p>
-                                                                                                                    </div>
-                                                                                                                    <span>{format!("From {} message {}", draft.source_role, draft.source_message_id)}</span>
-                                                                                                                </header>
-                                                                                                                <div class="job-meta">
-                                                                                                                    <span>{title.clone()}</span>
-                                                                                                                    <span>{repo_name.clone()}</span>
-                                                                                                                    <span>{base_branch.clone()}</span>
-                                                                                                                    <span>{execution_intent_label(&execution_intent)}</span>
-                                                                                                                </div>
-                                                                                                                <pre>{request_text.clone()}</pre>
-                                                                                                                <div class="draft-actions">
-                                                                                                                    <button
-                                                                                                                        type="button"
-                                                                                                                        on:click=move |_| {
-                                                                                                                            if repo_name.trim().is_empty() || request_text.trim().is_empty() {
-                                                                                                                                set_status_text.set("Draft repository and request text are required before dispatching.".to_string());
-                                                                                                                                return;
-                                                                                                                            }
-                                                                                                                            spawn_local({
-                                                                                                                                let set_selected_thread = set_selected_thread;
-                                                                                                                                let set_preferred_job_id = set_preferred_job_id;
-                                                                                                                                let set_selected_job_id = set_selected_job_id;
-                                                                                                                                let set_status_text = set_status_text;
-                                                                                                                                let set_threads = set_threads;
-                                                                                                                                let set_jobs = set_jobs;
-                                                                                                                                let selected_thread_id = selected_thread_id;
-                                                                                                                                let set_selected_thread_id = set_selected_thread_id;
-                                                                                                                                let thread_id = thread_id.clone();
-                                                                                                                                let source_message_id = source_message_id.clone();
-                                                                                                                                let source_role = source_role.clone();
-                                                                                                                                let title = title.clone();
-                                                                                                                                let repo_name = repo_name.clone();
-                                                                                                                                let base_branch = base_branch.clone();
-                                                                                                                                let request_text = request_text.clone();
-                                                                                                                                let execution_intent = execution_intent.clone();
-                                                                                                                                async move {
-                                                                                                                                    match dispatch_thread_message(&thread_id, &source_message_id, &title, &repo_name, &base_branch, Some(request_text), Some(execution_intent)).await {
-                                                                                                                                        Ok(job) => {
-                                                                                                                                            set_preferred_job_id.set(Some(job.id.clone()));
-                                                                                                                                            set_selected_job_id.set(Some(job.id.clone()));
-                                                                                                                                            set_status_text.set(format!("Promoted {} draft into job {}.", source_role, job.short_id));
-                                                                                                                                            let _ = sync_selected_thread(thread_id.clone(), set_selected_thread, set_status_text).await;
-                                                                                                                                            let _ = sync_thread_list(set_threads, selected_thread_id, set_selected_thread_id, set_status_text).await;
-                                                                                                                                            let _ = sync_job_list(set_jobs).await;
-                                                                                                                                        }
-                                                                                                                                        Err(error) => set_status_text.set(format!("Failed to dispatch execution draft: {error}")),
-                                                                                                                                    }
-                                                                                                                                }
-                                                                                                                            });
-                                                                                                                        }
-                                                                                                                    >
-                                                                                                                        "Dispatch Draft"
-                                                                                                                    </button>
-                                                                                                                </div>
                                                                                                             </section>
                                                                                                         }
                                                                                                     })}
@@ -1701,7 +1747,7 @@ pub fn App() -> impl IntoView {
                                                                         prop:disabled=move || pending_chat_submission.get().is_some()
                                                                         on:input=move |ev| set_new_message_content.set(event_target_value(&ev))
                                                                         on:keydown=move |ev: ev::KeyboardEvent| {
-                                                                            if ev.ctrl_key() && ev.key() == "Enter" {
+                                                                            if (ev.ctrl_key() || ev.meta_key()) && ev.key() == "Enter" {
                                                                                 ev.prevent_default();
                                                                                 if let Some(form) = ev
                                                                                     .target()
@@ -1724,6 +1770,7 @@ pub fn App() -> impl IntoView {
                                                                         </svg>
                                                                     </button>
                                                                 </div>
+                                                                <p class="composer-hint">"Ctrl+Enter or Cmd+Enter to send"</p>
                                                             </form>
                                                         </div>
                                                     </div>
