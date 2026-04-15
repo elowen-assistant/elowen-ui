@@ -10,13 +10,24 @@ Client-side Leptos frontend for Elowen's chat-first workspace.
 - preserve selected thread, selected job, nav mode, details state, composer text, and transcript scroll behavior across background updates
 - subscribe to authenticated server-sent events for thread, job, and device changes
 - retain slower polling as a fallback while realtime behavior is hardened
-- expose stable `data-testid` hooks for the planned Playwright browser automation slice
+- expose stable `data-testid` hooks for browser-level regression coverage
 
 ## Runtime Notes
 
 The UI is still client-side rendered and built with Trunk. The VPS deployment serves a prebuilt GHCR image rather than compiling on the server.
 
 SSR is intentionally deferred. The current product issue is long-running app-state continuity, not initial render quality.
+
+## Browser Automation
+
+Slice 30 adds a Playwright suite that builds the Leptos bundle with Trunk, serves it behind a same-origin mock API/SSE harness, and verifies product-critical UI behavior without depending on a live stack.
+
+Covered flows:
+
+- shared-password sign-in and sign-out
+- mobile drawer/details backdrop behavior
+- sticky composer placement with scroll-contained transcript behavior
+- realtime message presentation moving from `Job Update` to `Job Complete`
 
 ## Verification
 
@@ -27,4 +38,7 @@ cargo fmt --check
 cargo test --quiet
 cargo clippy --all-targets -- -D warnings
 cargo doc --no-deps
+npm install
+npx playwright install --with-deps chromium
+npm run test:e2e
 ```

@@ -83,8 +83,11 @@ pub(crate) async fn create_thread(title: &str) -> Result<ThreadDetail, String> {
     .await
 }
 
-pub(crate) async fn send_thread_chat_message(thread_id: &str, content: &str) -> Result<(), String> {
-    let response: ChatReplyResponse = decode_json(
+pub(crate) async fn send_thread_chat_message(
+    thread_id: &str,
+    content: &str,
+) -> Result<ChatReplyResponse, String> {
+    decode_json(
         with_credentials(Request::post(&format!(
             "{}/threads/{thread_id}/chat",
             api_base()
@@ -97,10 +100,7 @@ pub(crate) async fn send_thread_chat_message(thread_id: &str, content: &str) -> 
         .await
         .map_err(|error| error.to_string())?,
     )
-    .await?;
-
-    let _ = (&response.user_message, &response.assistant_message);
-    Ok(())
+    .await
 }
 
 pub(crate) async fn dispatch_thread_message(
