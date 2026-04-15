@@ -1402,20 +1402,26 @@ pub fn App() -> impl IntoView {
                                                                         };
                                                                         let has_inspector =
                                                                             result_details.is_some() || execution_draft.is_some() || can_dispatch;
-                                                                        let row_class = if message.role == "user" {
-                                                                            "message-row outgoing"
-                                                                        } else {
-                                                                            "message-row incoming"
+                                                                        let row_class = match message.role.as_str() {
+                                                                            "user" => "message-row outgoing",
+                                                                            "system" => "message-row incoming system",
+                                                                            "assistant" => "message-row incoming automated",
+                                                                            _ => "message-row incoming",
                                                                         };
                                                                         let role_label = match message.role.as_str() {
                                                                             "assistant" => "Elowen",
                                                                             "system" => "System",
                                                                             _ => "You",
                                                                         };
+                                                                        let surface_class = match message.role.as_str() {
+                                                                            "assistant" => "automated",
+                                                                            "system" => "system-surface",
+                                                                            _ => "",
+                                                                        };
 
                                                                         view! {
                                                                             <div class=row_class>
-                                                                                <article class=format!("message {} {}", message.role, message_mode_class)>
+                                                                                <article class=format!("message {} {} {}", message.role, surface_class, message_mode_class)>
                                                                                     <header class="message-header">
                                                                                         <div class="message-header-main">
                                                                                             <span class="message-role">{role_label}</span>

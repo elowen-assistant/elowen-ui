@@ -559,6 +559,15 @@ button[type="submit"]:hover {
     justify-content: flex-start;
 }
 
+.message-row.outgoing .message {
+    margin-left: 28px;
+}
+
+.message-row.system .message {
+    margin-right: 52px;
+    transform: translateX(-10px);
+}
+
 .message {
     width: min(100%, 720px);
     display: grid;
@@ -585,8 +594,18 @@ button[type="submit"]:hover {
     background: var(--bg-bubble-assistant);
 }
 
+.message.automated {
+    background: linear-gradient(180deg, rgba(35, 41, 54, 0.98) 0%, rgba(29, 35, 46, 0.96) 100%);
+    border-color: rgba(118, 146, 198, 0.22);
+}
+
 .message.system {
     background: var(--bg-bubble-system);
+}
+
+.message.system-surface {
+    background: linear-gradient(180deg, rgba(52, 39, 66, 0.96) 0%, rgba(41, 31, 56, 0.98) 100%);
+    border-color: rgba(191, 155, 255, 0.18);
 }
 
 .message.mode-handoff {
@@ -1172,6 +1191,13 @@ button[type="submit"]:hover {
         width: 100%;
         padding: 12px 14px;
         border-radius: 18px;
+    }
+
+    .message-row.outgoing .message,
+    .message-row.system .message {
+        margin-left: 0;
+        margin-right: 0;
+        transform: none;
     }
 
     .message-header {
