@@ -1193,11 +1193,13 @@ button[type="submit"]:hover {
         border-radius: 18px;
     }
 
-    .message-row.outgoing .message,
+    .message-row.outgoing .message {
+        margin-left: 12px;
+    }
+
     .message-row.system .message {
-        margin-left: 0;
-        margin-right: 0;
-        transform: none;
+        margin-right: 18px;
+        transform: translateX(-4px);
     }
 
     .message-header {
