@@ -191,7 +191,6 @@ pub(crate) async fn promote_job_note(job_id: &str) -> Result<NoteRecord, String>
 pub(crate) async fn resolve_approval(
     approval_id: &str,
     status: &str,
-    resolved_by: &str,
     reason: &str,
 ) -> Result<ApprovalRecord, String> {
     decode_json(
@@ -201,7 +200,6 @@ pub(crate) async fn resolve_approval(
         )))
         .json(&ResolveApprovalRequest {
             status: status.to_string(),
-            resolved_by: resolved_by.to_string(),
             reason: reason.to_string(),
         })
         .map_err(|error| error.to_string())?
@@ -222,10 +220,14 @@ pub(crate) async fn fetch_auth_session() -> Result<AuthSessionStatus, String> {
     .await
 }
 
-pub(crate) async fn login(password: &str) -> Result<AuthSessionStatus, String> {
+pub(crate) async fn login(
+    username: Option<&str>,
+    password: &str,
+) -> Result<AuthSessionStatus, String> {
     decode_json(
         with_credentials(Request::post(&auth_url("login")))
             .json(&LoginRequest {
+                username: username.map(str::to_string),
                 password: password.to_string(),
             })
             .map_err(|error| error.to_string())?

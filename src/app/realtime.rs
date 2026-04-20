@@ -253,8 +253,10 @@ fn expire_auth_session(handles: UiEventSyncHandles) {
     stop_realtime_updates(handles.clone(), RealtimeStatus::Disconnected);
     handles.set_auth_session.set(Some(AuthSessionStatus {
         enabled: true,
+        auth_mode: crate::models::AuthMode::LocalAccounts,
         authenticated: false,
-        operator_label: None,
+        actor: None,
+        permissions: Vec::new(),
     }));
     handles.set_selected_thread.set(None);
     handles.set_selected_job_id.set(None);

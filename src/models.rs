@@ -49,6 +49,37 @@ pub(crate) enum ExecutionIntent {
     ReadOnly,
 }
 
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum AuthMode {
+    Disabled,
+    LegacySharedPassword,
+    LocalAccounts,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum AuthRole {
+    Viewer,
+    Operator,
+    Admin,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum AuthPermission {
+    View,
+    Operate,
+    Admin,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+pub(crate) struct SessionActor {
+    pub(crate) username: String,
+    pub(crate) display_name: String,
+    pub(crate) role: AuthRole,
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub(crate) struct ExecutionDraft {
     pub(crate) title: String,
@@ -142,6 +173,7 @@ pub(crate) struct ApprovalRecord {
     pub(crate) status: String,
     pub(crate) summary: String,
     pub(crate) resolved_by: Option<String>,
+    pub(crate) resolved_by_display_name: Option<String>,
     pub(crate) resolution_reason: Option<String>,
     pub(crate) created_at: String,
     pub(crate) resolved_at: Option<String>,
@@ -185,7 +217,6 @@ pub(crate) struct CreateJobRequest {
 #[derive(Debug, Serialize)]
 pub(crate) struct ResolveApprovalRequest {
     pub(crate) status: String,
-    pub(crate) resolved_by: String,
     pub(crate) reason: String,
 }
 
@@ -215,11 +246,14 @@ pub(crate) struct PromoteJobNoteRequest {
 #[derive(Clone, Debug, Deserialize, PartialEq)]
 pub(crate) struct AuthSessionStatus {
     pub(crate) enabled: bool,
+    pub(crate) auth_mode: AuthMode,
     pub(crate) authenticated: bool,
-    pub(crate) operator_label: Option<String>,
+    pub(crate) actor: Option<SessionActor>,
+    pub(crate) permissions: Vec<AuthPermission>,
 }
 
 #[derive(Debug, Serialize)]
 pub(crate) struct LoginRequest {
+    pub(crate) username: Option<String>,
     pub(crate) password: String,
 }

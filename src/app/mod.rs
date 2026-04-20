@@ -31,7 +31,10 @@ use crate::{
 };
 
 use self::{
-    auth::{auth_loading_message, protected_workspace_label},
+    auth::{
+        auth_loading_message, auth_prompt, password_placeholder, protected_workspace_label,
+        username_placeholder,
+    },
     details::details_toggle_label,
     jobs::{job_count_label, short_thread_label},
     layout::{default_workspace_subtitle, default_workspace_title},
@@ -52,6 +55,44 @@ use self::{
 struct PendingChatSubmission {
     thread_id: String,
     content: String,
+}
+
+fn session_can_access(session: &AuthSessionStatus) -> bool {
+    !session.enabled || session.authenticated
+}
+
+fn session_has_permission(session: &AuthSessionStatus, permission: AuthPermission) -> bool {
+    !session.enabled || session.permissions.contains(&permission)
+}
+
+fn session_can_operate(session: &AuthSessionStatus) -> bool {
+    session_has_permission(session, AuthPermission::Operate)
+}
+
+fn session_can_admin(session: &AuthSessionStatus) -> bool {
+    session_has_permission(session, AuthPermission::Admin)
+}
+
+fn auth_role_label(role: &AuthRole) -> &'static str {
+    match role {
+        AuthRole::Viewer => "Viewer",
+        AuthRole::Operator => "Operator",
+        AuthRole::Admin => "Admin",
+    }
+}
+
+fn actor_chip_label(actor: &SessionActor) -> String {
+    format!("{} · {}", actor.display_name, auth_role_label(&actor.role))
+}
+
+fn unauthenticated_session(mode: AuthMode) -> AuthSessionStatus {
+    AuthSessionStatus {
+        enabled: true,
+        auth_mode: mode,
+        authenticated: false,
+        actor: None,
+        permissions: Vec::new(),
+    }
 }
 
 fn apply_chat_reply_to_selected_thread(
@@ -314,6 +355,7 @@ pub fn App() -> impl IntoView {
             .unwrap_or(NavMode::Chats),
     );
     let (auth_session, set_auth_session) = signal(None::<AuthSessionStatus>);
+    let (auth_username, set_auth_username) = signal(String::new());
     let (auth_password, set_auth_password) = signal(String::new());
     let (auth_error, set_auth_error) = signal(String::new());
     let (selected_thread_id, set_selected_thread_id) =
@@ -368,7 +410,7 @@ pub fn App() -> impl IntoView {
     spawn_local(async move {
         match fetch_auth_session().await {
             Ok(session) => {
-                let can_access = !session.enabled || session.authenticated;
+                let can_access = session_can_access(&session);
                 set_auth_session.set(Some(session));
                 if can_access {
                     if let Err(error) = sync_thread_list(
@@ -407,7 +449,7 @@ pub fn App() -> impl IntoView {
 
             let can_access = auth_session
                 .get_untracked()
-                .map(|session| !session.enabled || session.authenticated)
+                .map(|session| session_can_access(&session))
                 .unwrap_or(false);
 
             if !can_access {
@@ -442,11 +484,11 @@ pub fn App() -> impl IntoView {
                         },
                         RealtimeStatus::Disconnected,
                     );
-                    set_auth_session.set(Some(AuthSessionStatus {
-                        enabled: true,
-                        authenticated: false,
-                        operator_label: None,
-                    }));
+                    let auth_mode = auth_session
+                        .get_untracked()
+                        .map(|session| session.auth_mode)
+                        .unwrap_or(AuthMode::LocalAccounts);
+                    set_auth_session.set(Some(unauthenticated_session(auth_mode)));
                     set_selected_thread.set(None);
                     set_selected_job_detail.set(None);
                     set_selected_job_id.set(None);
@@ -477,11 +519,11 @@ pub fn App() -> impl IntoView {
                         },
                         RealtimeStatus::Disconnected,
                     );
-                    set_auth_session.set(Some(AuthSessionStatus {
-                        enabled: true,
-                        authenticated: false,
-                        operator_label: None,
-                    }));
+                    let auth_mode = auth_session
+                        .get_untracked()
+                        .map(|session| session.auth_mode)
+                        .unwrap_or(AuthMode::LocalAccounts);
+                    set_auth_session.set(Some(unauthenticated_session(auth_mode)));
                     set_selected_thread.set(None);
                     set_selected_job_detail.set(None);
                     set_selected_job_id.set(None);
@@ -515,11 +557,11 @@ pub fn App() -> impl IntoView {
                         },
                         RealtimeStatus::Disconnected,
                     );
-                    set_auth_session.set(Some(AuthSessionStatus {
-                        enabled: true,
-                        authenticated: false,
-                        operator_label: None,
-                    }));
+                    let auth_mode = auth_session
+                        .get_untracked()
+                        .map(|session| session.auth_mode)
+                        .unwrap_or(AuthMode::LocalAccounts);
+                    set_auth_session.set(Some(unauthenticated_session(auth_mode)));
                     set_selected_thread.set(None);
                     set_selected_job_detail.set(None);
                     set_selected_job_id.set(None);
@@ -553,11 +595,11 @@ pub fn App() -> impl IntoView {
                         },
                         RealtimeStatus::Disconnected,
                     );
-                    set_auth_session.set(Some(AuthSessionStatus {
-                        enabled: true,
-                        authenticated: false,
-                        operator_label: None,
-                    }));
+                    let auth_mode = auth_session
+                        .get_untracked()
+                        .map(|session| session.auth_mode)
+                        .unwrap_or(AuthMode::LocalAccounts);
+                    set_auth_session.set(Some(unauthenticated_session(auth_mode)));
                     set_selected_thread.set(None);
                     set_selected_job_detail.set(None);
                     set_selected_job_id.set(None);
@@ -572,7 +614,7 @@ pub fn App() -> impl IntoView {
     Effect::new(move |_| {
         let can_access = auth_session
             .get()
-            .map(|session| !session.enabled || session.authenticated)
+            .map(|session| session_can_access(&session))
             .unwrap_or(false);
 
         if can_access {
@@ -729,92 +771,128 @@ pub fn App() -> impl IntoView {
                             </section>
                         </div>
                     }.into_any(),
-                    Some(session) if session.enabled && !session.authenticated => view! {
-                        <div class="auth-shell">
-                            <section class="auth-card">
-                                <p class="eyebrow">{protected_workspace_label()}</p>
-                                <h1>"Sign In To Elowen"</h1>
-                                <p class="status">"Enter the shared workspace password to access threads, jobs, and notes."</p>
-                                <form data-testid="auth-form" on:submit=move |ev: ev::SubmitEvent| {
-                                    ev.prevent_default();
-                                    let password = auth_password.get_untracked();
-                                    if password.trim().is_empty() {
-                                        set_auth_error.set("Password is required.".to_string());
-                                        return;
-                                    }
+                    Some(session) if session.enabled && !session.authenticated => {
+                        let auth_mode = session.auth_mode.clone();
+                        let requires_username = matches!(auth_mode, AuthMode::LocalAccounts);
+                        let auth_status = match auth_mode {
+                            AuthMode::LocalAccounts => {
+                                "Local account authentication is enabled for this deployment."
+                            }
+                            AuthMode::LegacySharedPassword => {
+                                "Legacy shared-password access is enabled for this deployment."
+                            }
+                            AuthMode::Disabled => "Authentication is disabled for this deployment.",
+                        };
+                        view! {
+                            <div class="auth-shell">
+                                <section class="auth-card">
+                                    <p class="eyebrow">{protected_workspace_label()}</p>
+                                    <h1>"Sign In To Elowen"</h1>
+                                    <p class="status">{auth_prompt(&auth_mode)}</p>
+                                    <form data-testid="auth-form" on:submit=move |ev: ev::SubmitEvent| {
+                                        ev.prevent_default();
+                                        let username = auth_username.get_untracked().trim().to_string();
+                                        let password = auth_password.get_untracked();
+                                        if requires_username && username.is_empty() {
+                                            set_auth_error.set("Username is required.".to_string());
+                                            return;
+                                        }
+                                        if password.trim().is_empty() {
+                                            set_auth_error.set("Password is required.".to_string());
+                                            return;
+                                        }
 
-                                    spawn_local({
-                                        let set_auth_error = set_auth_error;
-                                        let set_auth_session = set_auth_session;
-                                        let set_status_text = set_status_text;
-                                        let set_threads = set_threads;
-                                        let set_jobs = set_jobs;
-                                        let selected_thread_id = selected_thread_id;
-                                        let set_selected_thread_id = set_selected_thread_id;
-                                        let set_selected_thread = set_selected_thread;
-                                        async move {
-                                            match login_session(&password).await {
-                                                Ok(session) => {
-                                                    set_auth_error.set(String::new());
-                                                    set_auth_session.set(Some(session));
-                                                    set_status_text.set("Signed in.".to_string());
+                                        spawn_local({
+                                            let set_auth_error = set_auth_error;
+                                            let set_auth_session = set_auth_session;
+                                            let set_auth_username = set_auth_username;
+                                            let set_auth_password = set_auth_password;
+                                            let set_status_text = set_status_text;
+                                            let set_threads = set_threads;
+                                            let set_jobs = set_jobs;
+                                            let selected_thread_id = selected_thread_id;
+                                            let set_selected_thread_id = set_selected_thread_id;
+                                            let set_selected_thread = set_selected_thread;
+                                            let login_username = requires_username.then_some(username);
+                                            async move {
+                                                match login_session(login_username.as_deref(), &password).await {
+                                                    Ok(session) => {
+                                                        set_auth_error.set(String::new());
+                                                        set_auth_username.set(String::new());
+                                                        set_auth_password.set(String::new());
+                                                        set_auth_session.set(Some(session));
+                                                        set_status_text.set("Signed in.".to_string());
 
-                                                    if let Err(error) = sync_thread_list(
-                                                        set_threads,
-                                                        selected_thread_id,
-                                                        set_selected_thread_id,
-                                                        set_status_text,
-                                                    )
-                                                    .await
-                                                    {
-                                                        set_status_text.set(format!("Failed to load threads: {error}"));
-                                                    }
-
-                                                    if let Err(error) = sync_job_list(set_jobs).await {
-                                                        set_status_text.set(format!("Failed to load jobs: {error}"));
-                                                    }
-
-                                                    if let Some(thread_id) = selected_thread_id.get_untracked()
-                                                        && let Err(error) = sync_selected_thread(
-                                                            thread_id,
-                                                            set_selected_thread,
+                                                        if let Err(error) = sync_thread_list(
+                                                            set_threads,
+                                                            selected_thread_id,
+                                                            set_selected_thread_id,
                                                             set_status_text,
                                                         )
                                                         .await
-                                                    {
-                                                        set_status_text.set(format!("Failed to load thread: {error}"));
+                                                        {
+                                                            set_status_text.set(format!("Failed to load threads: {error}"));
+                                                        }
+
+                                                        if let Err(error) = sync_job_list(set_jobs).await {
+                                                            set_status_text.set(format!("Failed to load jobs: {error}"));
+                                                        }
+
+                                                        if let Some(thread_id) = selected_thread_id.get_untracked()
+                                                            && let Err(error) = sync_selected_thread(
+                                                                thread_id,
+                                                                set_selected_thread,
+                                                                set_status_text,
+                                                            )
+                                                            .await
+                                                        {
+                                                            set_status_text.set(format!("Failed to load thread: {error}"));
+                                                        }
+                                                    }
+                                                    Err(error) => {
+                                                        set_auth_error.set(error);
                                                     }
                                                 }
-                                                Err(error) => {
-                                                    set_auth_error.set(error);
-                                                }
                                             }
-                                        }
-                                    });
-                                }>
-                                    <input
-                                        data-testid="auth-password"
-                                        type="password"
-                                        placeholder="Workspace password"
-                                        prop:value=move || auth_password.get()
-                                        on:input=move |ev| set_auth_password.set(event_target_value(&ev))
-                                    />
-                                    {move || {
-                                        let error = auth_error.get();
-                                        if error.is_empty() {
-                                            ().into_any()
+                                        });
+                                    }>
+                                        {if requires_username {
+                                            view! {
+                                                <input
+                                                    data-testid="auth-username"
+                                                    type="text"
+                                                    placeholder=username_placeholder(&auth_mode)
+                                                    prop:value=move || auth_username.get()
+                                                    on:input=move |ev| set_auth_username.set(event_target_value(&ev))
+                                                />
+                                            }.into_any()
                                         } else {
-                                            view! { <p class="auth-error">{error}</p> }.into_any()
-                                        }
-                                    }}
-                                    <div class="auth-actions">
-                                        <p class="status">"Authentication is enabled for this deployment."</p>
-                                        <button type="submit" data-testid="auth-submit">"Sign In"</button>
-                                    </div>
-                                </form>
-                            </section>
-                        </div>
-                    }.into_any(),
+                                            ().into_any()
+                                        }}
+                                        <input
+                                            data-testid="auth-password"
+                                            type="password"
+                                            placeholder=password_placeholder(&auth_mode)
+                                            prop:value=move || auth_password.get()
+                                            on:input=move |ev| set_auth_password.set(event_target_value(&ev))
+                                        />
+                                        {move || {
+                                            let error = auth_error.get();
+                                            if error.is_empty() {
+                                                ().into_any()
+                                            } else {
+                                                view! { <p class="auth-error">{error}</p> }.into_any()
+                                            }
+                                        }}
+                                        <div class="auth-actions">
+                                            <p class="status">{auth_status}</p>
+                                            <button type="submit" data-testid="auth-submit">"Sign In"</button>
+                                        </div>
+                                    </form>
+                                </section>
+                            </div>
+                        }.into_any()
+                    },
                     Some(_) => view! {
                         <div class="workspace-shell">
                             <header class="workspace-header">
@@ -915,10 +993,10 @@ pub fn App() -> impl IntoView {
                                         <span>{move || details_toggle_label(context_open.get())}</span>
                                     </button>
                                     {move || {
-                                        match auth_session.get().and_then(|session| session.operator_label) {
-                                            Some(operator_label) => view! {
+                                        match auth_session.get().and_then(|session| session.actor) {
+                                            Some(actor) => view! {
                                                 <>
-                                                    <span class="topbar-chip operator" data-testid="operator-chip">{operator_label}</span>
+                                                    <span class="topbar-chip operator" data-testid="operator-chip">{actor_chip_label(&actor)}</span>
                                                     <span class=move || format!("topbar-chip realtime {}", realtime_status.get().class())>
                                                         {move || realtime_status.get().label()}
                                                     </span>
@@ -1076,10 +1154,10 @@ pub fn App() -> impl IntoView {
                                         </button>
                                         <div class="drawer-status-stack">
                                             {move || {
-                                                match auth_session.get().and_then(|session| session.operator_label) {
-                                                    Some(operator_label) => view! {
+                                                match auth_session.get().and_then(|session| session.actor) {
+                                                    Some(actor) => view! {
                                                         <div class="drawer-chip-row">
-                                                            <span class="topbar-chip operator" data-testid="drawer-operator-chip">{operator_label}</span>
+                                                            <span class="topbar-chip operator" data-testid="drawer-operator-chip">{actor_chip_label(&actor)}</span>
                                                             <span class=move || format!("topbar-chip realtime {}", realtime_status.get().class())>
                                                                 {move || realtime_status.get().label()}
                                                             </span>
@@ -1155,6 +1233,14 @@ pub fn App() -> impl IntoView {
                                                 <div class="context-panel-body">
                                                     <form on:submit=move |ev: ev::SubmitEvent| {
                                                         ev.prevent_default();
+                                                        let can_operate = auth_session
+                                                            .get_untracked()
+                                                            .map(|session| session_can_operate(&session))
+                                                            .unwrap_or(false);
+                                                        if !can_operate {
+                                                            set_status_text.set("Your account is read-only.".to_string());
+                                                            return;
+                                                        }
                                                         let title = new_thread_title.get_untracked().trim().to_string();
                                                         if title.is_empty() {
                                                             set_status_text.set("Thread title is required.".to_string());
@@ -1197,9 +1283,21 @@ pub fn App() -> impl IntoView {
                                                             type="text"
                                                             placeholder="New thread title"
                                                             prop:value=move || new_thread_title.get()
+                                                            prop:disabled=move || auth_session
+                                                                .get()
+                                                                .map(|session| !session_can_operate(&session))
+                                                                .unwrap_or(true)
                                                             on:input=move |ev| set_new_thread_title.set(event_target_value(&ev))
                                                         />
-                                                        <button type="submit">"Create Thread"</button>
+                                                        <button
+                                                            type="submit"
+                                                            prop:disabled=move || auth_session
+                                                                .get()
+                                                                .map(|session| !session_can_operate(&session))
+                                                                .unwrap_or(true)
+                                                        >
+                                                            "Create Thread"
+                                                        </button>
                                                     </form>
                                                 </div>
                                             </details>
@@ -1506,7 +1604,19 @@ pub fn App() -> impl IntoView {
                                                                                                 <div class="draft-actions">
                                                                                                     <button
                                                                                                         type="button"
+                                                                                                        prop:disabled=move || auth_session
+                                                                                                            .get()
+                                                                                                            .map(|session| !session_can_operate(&session))
+                                                                                                            .unwrap_or(true)
                                                                                                         on:click=move |_| {
+                                                                                                            let can_operate = auth_session
+                                                                                                                .get_untracked()
+                                                                                                                .map(|session| session_can_operate(&session))
+                                                                                                                .unwrap_or(false);
+                                                                                                            if !can_operate {
+                                                                                                                set_status_text.set("Your account is read-only.".to_string());
+                                                                                                                return;
+                                                                                                            }
                                                                                                             if repo_name.trim().is_empty() || request_text.trim().is_empty() {
                                                                                                                 set_status_text.set("Draft repository and request text are required before dispatching.".to_string());
                                                                                                                 return;
@@ -1569,11 +1679,23 @@ pub fn App() -> impl IntoView {
                                                                                                                 <span>"Explicit handoff"</span>
                                                                                                                 <button
                                                                                                                     type="button"
+                                                                                                                    prop:disabled=move || auth_session
+                                                                                                                        .get()
+                                                                                                                        .map(|session| !session_can_operate(&session))
+                                                                                                                        .unwrap_or(true)
                                                                                                                     on:click={
                                                                                                                         let thread_id = message_actions_thread_id.clone();
                                                                                                                         let source_message_id = message_id.clone();
                                                                                                                         let source_role = message_role.clone();
                                                                                                                         move |_| {
+                                                                                                                            let can_operate = auth_session
+                                                                                                                                .get_untracked()
+                                                                                                                                .map(|session| session_can_operate(&session))
+                                                                                                                                .unwrap_or(false);
+                                                                                                                            if !can_operate {
+                                                                                                                                set_status_text.set("Your account is read-only.".to_string());
+                                                                                                                                return;
+                                                                                                                            }
                                                                                                                             let repo_name = new_job_repo.get_untracked().trim().to_string();
                                                                                                                             let title = new_job_title.get_untracked().trim().to_string();
                                                                                                                             let base_branch = new_job_base_branch.get_untracked().trim().to_string();
@@ -1673,6 +1795,14 @@ pub fn App() -> impl IntoView {
                                                         <div class="composer-dock">
                                                             <form class="thread-composer" data-testid="thread-composer" on:submit=move |ev: ev::SubmitEvent| {
                                                                 ev.prevent_default();
+                                                                let can_operate = auth_session
+                                                                    .get_untracked()
+                                                                    .map(|session| session_can_operate(&session))
+                                                                    .unwrap_or(false);
+                                                                if !can_operate {
+                                                                    set_status_text.set("Your account is read-only.".to_string());
+                                                                    return;
+                                                                }
                                                                 let content = new_message_content.get_untracked().trim().to_string();
                                                                 if content.is_empty() {
                                                                     set_status_text.set("Message content is required.".to_string());
@@ -1745,6 +1875,10 @@ pub fn App() -> impl IntoView {
                                                                         placeholder="Message Elowen"
                                                                         prop:value=move || new_message_content.get()
                                                                         prop:disabled=move || pending_chat_submission.get().is_some()
+                                                                            || auth_session
+                                                                                .get()
+                                                                                .map(|session| !session_can_operate(&session))
+                                                                                .unwrap_or(true)
                                                                         on:input=move |ev| set_new_message_content.set(event_target_value(&ev))
                                                                         on:keydown=move |ev: ev::KeyboardEvent| {
                                                                             if (ev.ctrl_key() || ev.meta_key()) && ev.key() == "Enter" {
@@ -1764,13 +1898,29 @@ pub fn App() -> impl IntoView {
                                                                         class="composer-send"
                                                                         aria-label="Send message"
                                                                         prop:disabled=move || pending_chat_submission.get().is_some()
+                                                                            || auth_session
+                                                                                .get()
+                                                                                .map(|session| !session_can_operate(&session))
+                                                                                .unwrap_or(true)
                                                                     >
                                                                         <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
                                                                             <path d="M5 12h12m0 0-5-5m5 5-5 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
                                                                         </svg>
                                                                     </button>
                                                                 </div>
-                                                                <p class="composer-hint">"Ctrl+Enter or Cmd+Enter to send"</p>
+                                                                <p class="composer-hint">
+                                                                    {move || {
+                                                                        if auth_session
+                                                                            .get()
+                                                                            .map(|session| session_can_operate(&session))
+                                                                            .unwrap_or(false)
+                                                                        {
+                                                                            "Ctrl+Enter or Cmd+Enter to send".to_string()
+                                                                        } else {
+                                                                            "Read-only access: ask an operator or admin to send messages.".to_string()
+                                                                        }
+                                                                    }}
+                                                                </p>
                                                             </form>
                                                         </div>
                                                     </div>
@@ -2023,7 +2173,19 @@ pub fn App() -> impl IntoView {
                                                                                             <div class="approval-actions">
                                                                                                 <button
                                                                                                     type="button"
+                                                                                                    prop:disabled=move || auth_session
+                                                                                                        .get()
+                                                                                                        .map(|session| !session_can_operate(&session))
+                                                                                                        .unwrap_or(true)
                                                                                                     on:click=move |_| {
+                                                                                                        let can_operate = auth_session
+                                                                                                            .get_untracked()
+                                                                                                            .map(|session| session_can_operate(&session))
+                                                                                                            .unwrap_or(false);
+                                                                                                        if !can_operate {
+                                                                                                            set_status_text.set("Your account is read-only.".to_string());
+                                                                                                            return;
+                                                                                                        }
                                                                                                         spawn_local({
                                                                                                             let job_id = promote_job_id.clone();
                                                                                                             let thread_id = promote_thread_id.clone();
@@ -2141,7 +2303,10 @@ pub fn App() -> impl IntoView {
                                                                                                             <span>{format!("Requested: {}", approval.created_at.clone())}</span>
                                                                                                             <span>{format!("Updated: {}", approval.updated_at.clone())}</span>
                                                                                                         </div>
-                                                                                                        {if is_pending {
+                                                                                                        {if is_pending && auth_session
+                                                                                                            .get()
+                                                                                                            .map(|session| session_can_admin(&session))
+                                                                                                            .unwrap_or(false) {
                                                                                                             view! {
                                                                                                                 <div class="approval-actions">
                                                                                                                     <button
@@ -2155,7 +2320,7 @@ pub fn App() -> impl IntoView {
                                                                                                                                 let set_selected_thread = set_selected_thread;
                                                                                                                                 let set_status_text = set_status_text;
                                                                                                                                 async move {
-                                                                                                                                    match resolve_approval(&approval_id, "approved", "user", "Push approved from UI").await {
+                                                                                                                                    match resolve_approval(&approval_id, "approved", "Push approved from UI").await {
                                                                                                                                         Ok(_) => {
                                                                                                                                             set_status_text.set("Push approved. The edge will continue.".to_string());
                                                                                                                                             let _ = sync_selected_job(approval_job_id, set_selected_job_detail, set_status_text).await;
@@ -2181,7 +2346,7 @@ pub fn App() -> impl IntoView {
                                                                                                                                 let set_selected_thread = set_selected_thread;
                                                                                                                                 let set_status_text = set_status_text;
                                                                                                                                 async move {
-                                                                                                                                    match resolve_approval(&approval_id, "rejected", "user", "Push rejected from UI").await {
+                                                                                                                                    match resolve_approval(&approval_id, "rejected", "Push rejected from UI").await {
                                                                                                                                         Ok(_) => {
                                                                                                                                             set_status_text.set("Push rejected. The branch was not pushed.".to_string());
                                                                                                                                             let _ = sync_selected_job(approval_job_id, set_selected_job_detail, set_status_text).await;
@@ -2249,6 +2414,14 @@ pub fn App() -> impl IntoView {
                                                         <div class="context-panel-body">
                                                             <form on:submit=move |ev: ev::SubmitEvent| {
                                                                 ev.prevent_default();
+                                                                let can_operate = auth_session
+                                                                    .get_untracked()
+                                                                    .map(|session| session_can_operate(&session))
+                                                                    .unwrap_or(false);
+                                                                if !can_operate {
+                                                                    set_status_text.set("Your account is read-only.".to_string());
+                                                                    return;
+                                                                }
                                                                 let title = new_job_title.get_untracked().trim().to_string();
                                                                 let repo_name = new_job_repo.get_untracked().trim().to_string();
                                                                 let base_branch = new_job_base_branch.get_untracked().trim().to_string();
@@ -2315,26 +2488,50 @@ pub fn App() -> impl IntoView {
                                                                     type="text"
                                                                     placeholder="Job title"
                                                                     prop:value=move || new_job_title.get()
+                                                                    prop:disabled=move || auth_session
+                                                                        .get()
+                                                                        .map(|session| !session_can_operate(&session))
+                                                                        .unwrap_or(true)
                                                                     on:input=move |ev| set_new_job_title.set(event_target_value(&ev))
                                                                 />
                                                                 <input
                                                                     type="text"
                                                                     placeholder="Repository"
                                                                     prop:value=move || new_job_repo.get()
+                                                                    prop:disabled=move || auth_session
+                                                                        .get()
+                                                                        .map(|session| !session_can_operate(&session))
+                                                                        .unwrap_or(true)
                                                                     on:input=move |ev| set_new_job_repo.set(event_target_value(&ev))
                                                                 />
                                                                 <input
                                                                     type="text"
                                                                     placeholder="Base branch"
                                                                     prop:value=move || new_job_base_branch.get()
+                                                                    prop:disabled=move || auth_session
+                                                                        .get()
+                                                                        .map(|session| !session_can_operate(&session))
+                                                                        .unwrap_or(true)
                                                                     on:input=move |ev| set_new_job_base_branch.set(event_target_value(&ev))
                                                                 />
                                                                 <textarea
                                                                     placeholder="Describe the coding task to dispatch"
                                                                     prop:value=move || new_job_request_text.get()
+                                                                    prop:disabled=move || auth_session
+                                                                        .get()
+                                                                        .map(|session| !session_can_operate(&session))
+                                                                        .unwrap_or(true)
                                                                     on:input=move |ev| set_new_job_request_text.set(event_target_value(&ev))
                                                                 />
-                                                                <button type="submit">"Create Job"</button>
+                                                                <button
+                                                                    type="submit"
+                                                                    prop:disabled=move || auth_session
+                                                                        .get()
+                                                                        .map(|session| !session_can_operate(&session))
+                                                                        .unwrap_or(true)
+                                                                >
+                                                                    "Create Job"
+                                                                </button>
                                                             </form>
                                                         </div>
                                                     </details>

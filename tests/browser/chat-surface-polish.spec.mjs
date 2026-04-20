@@ -52,6 +52,7 @@ test("submits the composer with Ctrl+Enter and shows the returned draft", async 
 
 async function login(page) {
   await page.goto("/");
+  await page.getByTestId("auth-username").fill("admin");
   await page.getByTestId("auth-password").fill("slice31-draft");
   await page.getByTestId("auth-submit").click();
   await expect(page.getByTestId("thread-composer")).toBeVisible();

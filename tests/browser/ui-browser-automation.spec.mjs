@@ -3,11 +3,28 @@ import { expect, test } from "@playwright/test";
 test("signs into the protected workspace and signs back out", async ({ page }) => {
   await login(page);
 
-  await expect(page.getByTestId("operator-chip")).toHaveText("Playwright Operator");
+  await expect(page.getByTestId("operator-chip")).toHaveText("Playwright Admin · Admin");
   await expect(page.getByText("Slice 30 browser automation").first()).toBeVisible();
 
   await page.getByTestId("signout-button").click();
   await expect(page.getByTestId("auth-form")).toBeVisible();
+});
+
+test("viewer sessions stay read-only in the workspace shell", async ({ page }) => {
+  await login(page, { username: "viewer", password: "slice32-viewer" });
+
+  await expect(page.getByTestId("operator-chip")).toHaveText("Viewer User · Viewer");
+  await expect(page.getByPlaceholder("Message Elowen")).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Create Thread" })).toBeDisabled();
+});
+
+test("operator sessions can work in chat but cannot resolve approvals", async ({ page }) => {
+  await login(page, { username: "operator", password: "slice32-operator" });
+
+  await expect(page.getByTestId("operator-chip")).toHaveText("Operator User · Operator");
+  await expect(page.getByPlaceholder("Message Elowen")).toBeEnabled();
+  await expect(page.getByRole("button", { name: "Approve And Push" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Reject Push" })).toHaveCount(0);
 });
 
 test.describe("mobile details interactions", () => {
@@ -84,10 +101,8 @@ test("keeps the composer pinned while the message pane owns scroll", async ({ pa
   expect(nextComposerBox.y + nextComposerBox.height).toBeLessThanOrEqual(page.viewportSize().height);
 });
 
-test("shows created job activity in the thread when the backend only exposes job events", async ({
-  page,
-}) => {
-  await login(page, { password: "slice30-created" });
+test("shows created job activity in the thread when the backend only exposes job events", async ({ page }) => {
+  await login(page, { username: "admin", password: "slice30-created" });
 
   await expect(page.getByText("Job Update").first()).toBeVisible();
   await expect(
@@ -99,7 +114,7 @@ test("shows created job activity in the thread when the backend only exposes job
 test("refreshes the job presentation from Job Update to Job Complete after realtime delivery", async ({
   page,
 }) => {
-  await login(page, { password: "slice30-realtime" });
+  await login(page, { username: "admin", password: "slice30-realtime" });
 
   await expect(page.getByText("Job Update").first()).toBeVisible();
   await expect(
@@ -114,9 +129,10 @@ test("refreshes the job presentation from Job Update to Job Complete after realt
   ).toBeVisible();
 });
 
-async function login(page, { password = "slice30" } = {}) {
+async function login(page, { username = "admin", password = "slice30" } = {}) {
   await page.goto("/");
   await expect(page.getByTestId("auth-form")).toBeVisible();
+  await page.getByTestId("auth-username").fill(username);
   await page.getByTestId("auth-password").fill(password);
   await page.getByTestId("auth-submit").click();
   await expect(page.getByTestId("thread-composer")).toBeVisible();

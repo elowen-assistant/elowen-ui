@@ -66,11 +66,12 @@ async function handleApiRequest(req, res, pathname) {
 
   if (pathname === "/api/v1/auth/login" && req.method === "POST") {
     const body = await readJson(req);
+    const username = body?.username == null ? null : String(body.username);
     const password = String(body?.password ?? "");
-    const scenario = passwordToScenario(password);
+    const scenario = credentialsToScenario(username, password);
 
     if (!scenario) {
-      writeJson(res, 401, { error: "invalid workspace password" });
+      writeJson(res, 401, { error: "invalid username or password" });
       return;
     }
 
@@ -100,6 +101,36 @@ async function handleApiRequest(req, res, pathname) {
 
   if (!session?.authenticated) {
     writeJson(res, 401, { error: "sign in required" });
+    return;
+  }
+
+  if (pathname === "/api/v1/threads" && req.method === "POST" && !canOperate(session)) {
+    writeJson(res, 403, { error: "the signed-in account is not allowed to perform this action" });
+    return;
+  }
+
+  if (pathname === `/api/v1/threads/${session.state.thread.id}/chat` && req.method === "POST" && !canOperate(session)) {
+    writeJson(res, 403, { error: "the signed-in account is not allowed to perform this action" });
+    return;
+  }
+
+  if (pathname === `/api/v1/threads/${session.state.thread.id}/message-dispatch` && req.method === "POST" && !canOperate(session)) {
+    writeJson(res, 403, { error: "the signed-in account is not allowed to perform this action" });
+    return;
+  }
+
+  if (pathname === `/api/v1/threads/${session.state.thread.id}/jobs` && req.method === "POST" && !canOperate(session)) {
+    writeJson(res, 403, { error: "the signed-in account is not allowed to perform this action" });
+    return;
+  }
+
+  if (pathname === `/api/v1/jobs/${session.state.job.id}/notes/promote` && req.method === "POST" && !canOperate(session)) {
+    writeJson(res, 403, { error: "the signed-in account is not allowed to perform this action" });
+    return;
+  }
+
+  if (pathname === `/api/v1/approvals/${session.state.approval.id}/resolve` && req.method === "POST" && !canAdmin(session)) {
+    writeJson(res, 403, { error: "the signed-in account is not allowed to perform this action" });
     return;
   }
 
@@ -134,6 +165,45 @@ async function handleApiRequest(req, res, pathname) {
 
   if (pathname === `/api/v1/jobs/${session.state.job.id}` && req.method === "GET") {
     writeJson(res, 200, session.state.job);
+    return;
+  }
+
+  if (pathname === `/api/v1/jobs/${session.state.job.id}/notes/promote` && req.method === "POST") {
+    writeJson(res, 201, {
+      note_id: "note-promoted",
+      title: "Promoted job summary",
+      slug: "promoted-job-summary",
+      summary: "Promoted from the current job summary.",
+      tags: ["job", "promoted"],
+      aliases: [],
+      note_type: "job-summary",
+      source_kind: "job",
+      source_id: session.state.job.id,
+      current_revision_id: "rev-promoted",
+      updated_at: session.state.job.updated_at,
+    });
+    return;
+  }
+
+  if (pathname === `/api/v1/approvals/${session.state.approval.id}/resolve` && req.method === "POST") {
+    const body = await readJson(req);
+    const status = String(body?.status ?? "").trim().toLowerCase();
+    if (status !== "approved" && status !== "rejected") {
+      writeJson(res, 400, { error: "approval status must be `approved` or `rejected`" });
+      return;
+    }
+
+    session.state.approval = {
+      ...session.state.approval,
+      status,
+      resolved_by: session.actor.username,
+      resolved_by_display_name: session.actor.display_name,
+      resolution_reason: String(body?.reason ?? ""),
+      resolved_at: "2026-04-15T15:10:00Z",
+      updated_at: "2026-04-15T15:10:00Z",
+    };
+    session.state.job.approvals = [structuredClone(session.state.approval)];
+    writeJson(res, 200, session.state.approval);
     return;
   }
 
@@ -256,6 +326,7 @@ function applyRealtimeCompletion(session) {
         },
       ],
     },
+    approval: session.state.approval,
   };
 }
 
@@ -289,27 +360,77 @@ function getSessionFromCookie(req) {
   return sessions.get(sessionId) ?? null;
 }
 
-function passwordToScenario(password) {
-  if (password === "slice30") {
-    return "default";
+function credentialsToScenario(username, password) {
+  const normalizedUsername = username?.trim().toLowerCase() ?? null;
+
+  if (normalizedUsername === "admin" && password === "slice30") {
+    return {
+      scenario: "default",
+      actor: actor("admin", "Playwright Admin", "admin"),
+      authMode: "local_accounts",
+    };
   }
 
-  if (password === "slice30-created") {
-    return "created-only";
+  if (normalizedUsername === "admin" && password === "slice30-created") {
+    return {
+      scenario: "created-only",
+      actor: actor("admin", "Playwright Admin", "admin"),
+      authMode: "local_accounts",
+    };
   }
 
-  if (password === "slice30-realtime") {
-    return "realtime";
+  if (normalizedUsername === "admin" && password === "slice30-realtime") {
+    return {
+      scenario: "realtime",
+      actor: actor("admin", "Realtime Admin", "admin"),
+      authMode: "local_accounts",
+    };
   }
 
-  if (password === "slice31-draft") {
-    return "draft";
+  if (normalizedUsername === "admin" && password === "slice31-draft") {
+    return {
+      scenario: "draft",
+      actor: actor("admin", "Draft Admin", "admin"),
+      authMode: "local_accounts",
+    };
+  }
+
+  if (normalizedUsername === "operator" && password === "slice32-operator") {
+    return {
+      scenario: "draft",
+      actor: actor("operator", "Operator User", "operator"),
+      authMode: "local_accounts",
+    };
+  }
+
+  if (normalizedUsername === "viewer" && password === "slice32-viewer") {
+    return {
+      scenario: "default",
+      actor: actor("viewer", "Viewer User", "viewer"),
+      authMode: "local_accounts",
+    };
+  }
+
+  if (!normalizedUsername && password === "slice32-legacy") {
+    return {
+      scenario: "default",
+      actor: actor("legacy-admin", "Legacy Admin", "admin"),
+      authMode: "legacy_shared_password",
+    };
   }
 
   return null;
 }
 
-function createSession(scenario) {
+function actor(username, displayName, role) {
+  return {
+    username,
+    display_name: displayName,
+    role,
+  };
+}
+
+function createSession({ scenario, actor, authMode }) {
   const now = "2026-04-15T14:40:00Z";
   const isCreatedOnly = scenario === "created-only";
   const isDraft = scenario === "draft";
@@ -448,18 +569,32 @@ function createSession(scenario) {
             },
           ],
     },
+    approval: {
+      id: "approval-slice-31",
+      thread_id: isDraft ? "thread-slice-31" : "thread-slice-30",
+      job_id: jobRecord.id,
+      action_type: "push",
+      status: "pending",
+      summary: "Push approval is pending.",
+      resolved_by: null,
+      resolved_by_display_name: null,
+      resolution_reason: null,
+      created_at: now,
+      resolved_at: null,
+      updated_at: now,
+    },
   };
+
+  if (isDraft) {
+    state.job.approvals = [structuredClone(state.approval)];
+  }
 
   return {
     id: randomUUID(),
     authenticated: true,
     scenario,
-    operatorLabel:
-      scenario === "realtime"
-        ? "Realtime Operator"
-        : scenario === "draft"
-          ? "Draft Operator"
-          : "Playwright Operator",
+    actor,
+    authMode,
     eventClients: new Set(),
     realtimeDelivered: false,
     state,
@@ -595,17 +730,40 @@ function appendChatExchange(session, content) {
 function authenticatedSession(session) {
   return {
     enabled: true,
+    auth_mode: session.authMode,
     authenticated: true,
-    operator_label: session.operatorLabel,
+    actor: session.actor,
+    permissions: permissionsForRole(session.actor.role),
   };
 }
 
 function anonymousSession() {
   return {
     enabled: true,
+    auth_mode: "local_accounts",
     authenticated: false,
-    operator_label: null,
+    actor: null,
+    permissions: [],
   };
+}
+
+function permissionsForRole(role) {
+  switch (role) {
+    case "admin":
+      return ["view", "operate", "admin"];
+    case "operator":
+      return ["view", "operate"];
+    default:
+      return ["view"];
+  }
+}
+
+function canOperate(session) {
+  return session.actor.role === "operator" || session.actor.role === "admin";
+}
+
+function canAdmin(session) {
+  return session.actor.role === "admin";
 }
 
 function writeJson(res, statusCode, payload) {
