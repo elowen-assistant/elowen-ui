@@ -144,6 +144,16 @@ async function handleApiRequest(req, res, pathname) {
     return;
   }
 
+  if (pathname === "/api/v1/repositories" && req.method === "GET") {
+    if (!canOperate(session)) {
+      writeJson(res, 403, { error: "the signed-in account is not allowed to perform this action" });
+      return;
+    }
+
+    writeJson(res, 200, session.state.repositories);
+    return;
+  }
+
   if (pathname === `/api/v1/threads/${session.state.thread.id}` && req.method === "GET") {
     writeJson(res, 200, session.state.thread);
     return;
@@ -493,6 +503,11 @@ function createSession({ scenario, actor, authMode }) {
       ],
     },
     jobs: [structuredClone(jobRecord)],
+    repositories: [
+      { name: "elowen-api", device_count: 1 },
+      { name: "elowen-ui", device_count: 1 },
+      { name: "elowen-platform", device_count: 1 },
+    ],
     job: {
       ...structuredClone(jobRecord),
       execution_report_json: isCreatedOnly

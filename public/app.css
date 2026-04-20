@@ -54,6 +54,7 @@ a {
 
 button,
 input,
+select,
 textarea {
     font: inherit;
 }
@@ -65,6 +66,7 @@ button {
 }
 
 input,
+select,
 textarea {
     width: 100%;
     border: 1px solid var(--line);
@@ -77,6 +79,7 @@ textarea {
 }
 
 input:focus,
+select:focus,
 textarea:focus {
     outline: none;
     border-color: rgba(59, 140, 255, 0.72);
@@ -880,10 +883,39 @@ button[type="submit"]:hover {
     font-size: 0.8rem;
 }
 
-.draft-field span {
+.draft-field-control {
+    width: 100%;
+    min-width: 0;
+    display: block;
+    padding: 10px 12px;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.03);
     color: var(--ink-soft);
     line-height: 1.45;
-    overflow-wrap: anywhere;
+}
+
+textarea.draft-field-control {
+    resize: vertical;
+}
+
+select.draft-field-control {
+    appearance: none;
+    -webkit-appearance: none;
+    background:
+        linear-gradient(45deg, transparent 50%, var(--ink-muted) 50%),
+        linear-gradient(135deg, var(--ink-muted) 50%, transparent 50%),
+        rgba(255, 255, 255, 0.03);
+    background-position:
+        calc(100% - 18px) calc(50% - 2px),
+        calc(100% - 12px) calc(50% - 2px),
+        0 0;
+    background-size:
+        6px 6px,
+        6px 6px,
+        100% 100%;
+    background-repeat: no-repeat;
+    padding-right: 34px;
 }
 
 .draft-request {
@@ -891,8 +923,9 @@ button[type="submit"]:hover {
     gap: 8px;
 }
 
-.draft-request pre {
-    max-height: 220px;
+.draft-request-control {
+    min-height: 132px;
+    max-height: 280px;
 }
 
 .status-badge {

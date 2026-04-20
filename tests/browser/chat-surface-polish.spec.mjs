@@ -7,6 +7,7 @@ test("shows the execution draft as a visible handoff card", async ({ page }) => 
   await expect(messagePane.getByText("Execution Draft")).toBeVisible();
   await expect(messagePane.getByRole("heading", { name: "Polish chat transcript surfaces" })).toBeVisible();
   await expect(messagePane.locator(".draft-field").filter({ hasText: "Repository" })).toBeVisible();
+  await expect(messagePane.getByRole("combobox").first()).toHaveValue("elowen-ui");
   await expect(messagePane.locator(".draft-field").filter({ hasText: "Base Branch" })).toBeVisible();
   await expect(
     messagePane.getByText(
@@ -43,6 +44,7 @@ test("submits the composer with Ctrl+Enter and shows the returned draft", async 
 
   const messagePane = page.getByTestId("message-pane");
   await expect(messagePane.getByRole("heading", { name: "Polish transcript timestamps" })).toBeVisible();
+  await expect(messagePane.getByRole("combobox").first()).toHaveValue("elowen-ui");
   await expect(
     messagePane.locator(".draft-request pre").filter({
       hasText: "Implement transcript timestamp polish in repo `elowen-ui`.",

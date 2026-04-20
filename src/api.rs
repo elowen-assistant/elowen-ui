@@ -49,6 +49,26 @@ pub(crate) async fn fetch_jobs() -> Result<Vec<JobRecord>, String> {
     .await
 }
 
+pub(crate) async fn fetch_repositories() -> Result<Vec<RepositoryOption>, String> {
+    decode_json(
+        with_credentials(Request::get(&format!("{}/repositories", api_base())))
+            .send()
+            .await
+            .map_err(|error| error.to_string())?,
+    )
+    .await
+}
+
+pub(crate) async fn fetch_devices() -> Result<Vec<DeviceRecord>, String> {
+    decode_json(
+        with_credentials(Request::get(&format!("{}/devices", api_base())))
+            .send()
+            .await
+            .map_err(|error| error.to_string())?,
+    )
+    .await
+}
+
 pub(crate) async fn fetch_thread(thread_id: &str) -> Result<ThreadDetail, String> {
     decode_json(
         with_credentials(Request::get(&format!("{}/threads/{thread_id}", api_base())))
@@ -107,6 +127,7 @@ pub(crate) async fn dispatch_thread_message(
     thread_id: &str,
     source_message_id: &str,
     title: &str,
+    device_id: Option<String>,
     repo_name: &str,
     base_branch: &str,
     request_text: Option<String>,
@@ -122,6 +143,7 @@ pub(crate) async fn dispatch_thread_message(
             title: title.to_string(),
             repo_name: repo_name.to_string(),
             base_branch: base_branch.to_string(),
+            device_id,
             request_text,
             execution_intent,
         })
@@ -139,6 +161,7 @@ pub(crate) async fn dispatch_thread_message(
 pub(crate) async fn create_job(
     thread_id: &str,
     title: &str,
+    device_id: Option<String>,
     repo_name: &str,
     base_branch: &str,
     request_text: &str,
@@ -154,6 +177,7 @@ pub(crate) async fn create_job(
             repo_name: repo_name.to_string(),
             base_branch: base_branch.to_string(),
             request_text: request_text.to_string(),
+            device_id,
             execution_intent,
         })
         .map_err(|error| error.to_string())?

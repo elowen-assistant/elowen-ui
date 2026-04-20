@@ -50,6 +50,30 @@ pub(crate) enum ExecutionIntent {
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq)]
+pub(crate) struct DeviceRepository {
+    pub(crate) name: String,
+    pub(crate) branches: Vec<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+pub(crate) struct DeviceRecord {
+    pub(crate) id: String,
+    pub(crate) name: String,
+    pub(crate) primary_flag: bool,
+    pub(crate) allowed_repos: Vec<String>,
+    pub(crate) allowed_repo_roots: Vec<String>,
+    pub(crate) hidden_repos: Vec<String>,
+    pub(crate) excluded_repo_paths: Vec<String>,
+    pub(crate) discovered_repos: Vec<String>,
+    pub(crate) repositories: Vec<DeviceRepository>,
+    pub(crate) capabilities: Vec<String>,
+    pub(crate) registered_at: String,
+    pub(crate) last_seen_at: String,
+    pub(crate) created_at: String,
+    pub(crate) updated_at: String,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum AuthMode {
     Disabled,
@@ -90,6 +114,12 @@ pub(crate) struct ExecutionDraft {
     pub(crate) source_message_id: String,
     pub(crate) source_role: String,
     pub(crate) rationale: String,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+pub(crate) struct RepositoryOption {
+    pub(crate) name: String,
+    pub(crate) device_count: usize,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq)]
@@ -201,6 +231,7 @@ pub(crate) struct DispatchThreadMessageRequest {
     pub(crate) title: String,
     pub(crate) repo_name: String,
     pub(crate) base_branch: String,
+    pub(crate) device_id: Option<String>,
     pub(crate) request_text: Option<String>,
     pub(crate) execution_intent: Option<ExecutionIntent>,
 }
@@ -211,6 +242,7 @@ pub(crate) struct CreateJobRequest {
     pub(crate) repo_name: String,
     pub(crate) base_branch: String,
     pub(crate) request_text: String,
+    pub(crate) device_id: Option<String>,
     pub(crate) execution_intent: Option<ExecutionIntent>,
 }
 

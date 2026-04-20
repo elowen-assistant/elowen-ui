@@ -5,7 +5,10 @@ use leptos::prelude::*;
 use web_sys::EventSource;
 
 use super::reconnect::ReconnectController;
-use crate::models::{AuthSessionStatus, JobDetail, JobRecord, ThreadDetail, ThreadSummary};
+use crate::models::{
+    AuthSessionStatus, DeviceRecord, JobDetail, JobRecord, RepositoryOption, ThreadDetail,
+    ThreadSummary,
+};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(super) enum NavMode {
@@ -84,6 +87,8 @@ pub(super) struct UiEventSyncHandles {
     pub(super) set_selected_thread_id: WriteSignal<Option<String>>,
     pub(super) set_selected_thread: WriteSignal<Option<ThreadDetail>>,
     pub(super) set_jobs: WriteSignal<Vec<JobRecord>>,
+    pub(super) set_devices: WriteSignal<Vec<DeviceRecord>>,
+    pub(super) set_repositories: WriteSignal<Vec<RepositoryOption>>,
     pub(super) set_selected_job_id: WriteSignal<Option<String>>,
     pub(super) set_selected_job_detail: WriteSignal<Option<JobDetail>>,
     pub(super) set_auth_session: WriteSignal<Option<AuthSessionStatus>>,

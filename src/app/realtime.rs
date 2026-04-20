@@ -4,8 +4,14 @@ use wasm_bindgen::{JsCast, closure::Closure};
 use web_sys::{Event, EventSource, MessageEvent};
 
 use crate::{
-    api::{events_url, fetch_job, fetch_jobs, fetch_thread, fetch_threads},
-    models::{AuthSessionStatus, JobDetail, JobRecord, ThreadDetail, ThreadSummary, UiEvent},
+    api::{
+        events_url, fetch_devices, fetch_job, fetch_jobs, fetch_repositories, fetch_thread,
+        fetch_threads,
+    },
+    models::{
+        AuthSessionStatus, DeviceRecord, JobDetail, JobRecord, RepositoryOption, ThreadDetail,
+        ThreadSummary, UiEvent,
+    },
 };
 
 use super::state::{RealtimeStatus, UiEventSyncHandles};
@@ -137,6 +143,8 @@ async fn refresh_for_ui_event(event: UiEvent, handles: UiEventSyncHandles) -> Re
         }
         "device.changed" => {
             sync_job_list(handles.set_jobs).await?;
+            sync_device_list(handles.set_devices).await?;
+            sync_repository_list(handles.set_repositories).await?;
             sync_selected_resources_for_current_thread(handles).await?;
         }
         _ => {
@@ -160,6 +168,8 @@ async fn sync_realtime_catch_up(handles: UiEventSyncHandles) -> Result<(), Strin
     )
     .await?;
     sync_job_list(handles.set_jobs).await?;
+    sync_device_list(handles.set_devices).await?;
+    sync_repository_list(handles.set_repositories).await?;
 
     if let Some(thread_id) = handles.selected_thread_id.get_untracked() {
         sync_selected_thread_quiet(thread_id, handles.set_selected_thread).await?;
@@ -261,6 +271,8 @@ fn expire_auth_session(handles: UiEventSyncHandles) {
     handles.set_selected_thread.set(None);
     handles.set_selected_job_id.set(None);
     handles.set_selected_job_detail.set(None);
+    handles.set_devices.set(Vec::new());
+    handles.set_repositories.set(Vec::new());
     handles
         .set_status_text
         .set("Session expired. Sign in again.".to_string());
@@ -330,6 +342,21 @@ async fn sync_thread_list_internal(
 
 pub(super) async fn sync_job_list(set_jobs: WriteSignal<Vec<JobRecord>>) -> Result<(), String> {
     set_jobs.set(fetch_jobs().await?);
+    Ok(())
+}
+
+pub(super) async fn sync_device_list(
+    set_devices: WriteSignal<Vec<DeviceRecord>>,
+) -> Result<(), String> {
+    set_devices.set(fetch_devices().await?);
+    Ok(())
+}
+
+pub(super) async fn sync_repository_list(
+    set_repositories: WriteSignal<Vec<RepositoryOption>>,
+) -> Result<(), String> {
+    let repositories = fetch_repositories().await?;
+    set_repositories.set(repositories);
     Ok(())
 }
 
