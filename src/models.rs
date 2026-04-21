@@ -55,6 +55,34 @@ pub(crate) struct DeviceRepository {
     pub(crate) branches: Vec<String>,
 }
 
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+pub(crate) struct DeviceTrustRecord {
+    #[serde(default, alias = "state")]
+    pub(crate) status: String,
+    #[serde(default)]
+    pub(crate) label: Option<String>,
+    #[serde(default)]
+    pub(crate) summary: Option<String>,
+    #[serde(default)]
+    pub(crate) detail: Option<String>,
+    #[serde(default)]
+    pub(crate) reason: Option<String>,
+    #[serde(default)]
+    pub(crate) enrollment_kind: Option<String>,
+    #[serde(default)]
+    pub(crate) last_trusted_registration_at: Option<String>,
+    #[serde(default)]
+    pub(crate) rotated_at: Option<String>,
+    #[serde(default)]
+    pub(crate) revoked_at: Option<String>,
+    #[serde(default)]
+    pub(crate) updated_at: Option<String>,
+    #[serde(default)]
+    pub(crate) can_dispatch: Option<bool>,
+    #[serde(default, alias = "attention_needed")]
+    pub(crate) requires_attention: bool,
+}
+
 #[derive(Clone, Debug, Deserialize, PartialEq)]
 pub(crate) struct DeviceRecord {
     pub(crate) id: String,
@@ -67,6 +95,8 @@ pub(crate) struct DeviceRecord {
     pub(crate) discovered_repos: Vec<String>,
     pub(crate) repositories: Vec<DeviceRepository>,
     pub(crate) capabilities: Vec<String>,
+    #[serde(default)]
+    pub(crate) trust: DeviceTrustRecord,
     pub(crate) registered_at: String,
     pub(crate) last_seen_at: String,
     pub(crate) created_at: String,

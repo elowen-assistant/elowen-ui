@@ -129,6 +129,42 @@ test("refreshes the job presentation from Job Update to Job Complete after realt
   ).toBeVisible();
 });
 
+test("shows trust state separately from device freshness in the details panel", async ({ page }) => {
+  await login(page);
+
+  await page.getByRole("button", { name: "Show Details" }).click();
+
+  const deviceTrustList = page.getByTestId("device-trust-list");
+  await expect(deviceTrustList).toBeVisible();
+  await expect(deviceTrustList.getByText("Laptop Edge")).toBeVisible();
+  await expect(deviceTrustList.getByText("Trusted")).toBeVisible();
+  await expect(deviceTrustList.getByText("Travel Edge")).toBeVisible();
+  await expect(deviceTrustList.getByText("Needs Attention")).toBeVisible();
+  await expect(deviceTrustList.getByText("Retired Edge")).toBeVisible();
+  await expect(deviceTrustList.getByText("Revoked")).toBeVisible();
+  await expect(deviceTrustList.getByText(/Seen: 2026-04-15T14:39:00Z/)).toBeVisible();
+  await expect(deviceTrustList.getByText(/Trusted: 2026-04-15T13:55:00Z/)).toBeVisible();
+});
+
+test("updates the manual dispatch trust guidance when choosing a different edge", async ({ page }) => {
+  await login(page);
+
+  await page.getByRole("button", { name: "Show Details" }).click();
+  await page.getByText("Advanced Manual Job").click();
+
+  const trustCard = page.getByTestId("manual-job-device-trust");
+  await expect(trustCard).toContainText("Laptop Edge");
+  await expect(trustCard).toContainText("Trusted");
+
+  const manualJobPanel = page.locator("details").filter({ hasText: "Advanced Manual Job" });
+  await manualJobPanel.locator("select").first().selectOption("travel-edge-02");
+
+  await expect(trustCard).toContainText("Travel Edge");
+  await expect(trustCard).toContainText("Needs Attention");
+  await expect(trustCard).toContainText("Re-enrollment");
+  await expect(trustCard).toContainText("Dispatch should stay blocked until this trust issue is resolved.");
+});
+
 async function login(page, { username = "admin", password = "slice30" } = {}) {
   await page.goto("/");
   await expect(page.getByTestId("auth-form")).toBeVisible();

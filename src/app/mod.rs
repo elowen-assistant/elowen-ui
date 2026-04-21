@@ -66,6 +66,14 @@ struct DraftEditState {
     request_text: String,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ContextTab {
+    Thread,
+    Devices,
+    Job,
+    Manual,
+}
+
 fn session_can_access(session: &AuthSessionStatus) -> bool {
     !session.enabled || session.authenticated
 }
@@ -106,6 +114,218 @@ fn unauthenticated_session(mode: AuthMode) -> AuthSessionStatus {
 
 fn device_option_exists(devices: &[DeviceRecord], device_id: &str) -> bool {
     devices.iter().any(|device| device.id == device_id)
+}
+
+fn selected_device(devices: &[DeviceRecord], device_id: &str) -> Option<DeviceRecord> {
+    devices
+        .iter()
+        .find(|device| device.id == device_id)
+        .cloned()
+}
+
+fn device_trust_status_key(trust: &DeviceTrustRecord) -> &str {
+    let status = trust.status.trim();
+    if status.is_empty() {
+        "unreported"
+    } else {
+        status
+    }
+}
+
+fn device_trust_status_class(trust: &DeviceTrustRecord) -> &'static str {
+    match device_trust_status_key(trust) {
+        "trusted" => "trusted",
+        "rotated" => "rotated",
+        "revoked" => "revoked",
+        "untrusted" => "untrusted",
+        "attention_needed" | "needs_attention" => "attention",
+        _ => "unreported",
+    }
+}
+
+fn device_trust_status_label(trust: &DeviceTrustRecord) -> String {
+    if let Some(label) = trust
+        .label
+        .as_deref()
+        .map(str::trim)
+        .filter(|label| !label.is_empty())
+    {
+        return label.to_string();
+    }
+
+    match device_trust_status_key(trust) {
+        "trusted" => "Trusted".to_string(),
+        "rotated" => "Rotated".to_string(),
+        "revoked" => "Revoked".to_string(),
+        "untrusted" => "Untrusted".to_string(),
+        "attention_needed" | "needs_attention" => "Needs Attention".to_string(),
+        _ => "Trust Unreported".to_string(),
+    }
+}
+
+fn device_requires_trust_attention(device: &DeviceRecord) -> bool {
+    device.trust.requires_attention
+        || matches!(
+            device_trust_status_key(&device.trust),
+            "revoked" | "untrusted" | "attention_needed" | "needs_attention"
+        )
+        || matches!(device.trust.can_dispatch, Some(false))
+}
+
+fn device_trust_summary(device: &DeviceRecord) -> String {
+    device
+        .trust
+        .summary
+        .as_deref()
+        .or(device.trust.detail.as_deref())
+        .or(device.trust.reason.as_deref())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
+        .unwrap_or_else(|| match device_trust_status_key(&device.trust) {
+            "trusted" => "Trusted enrollment is active for this edge.".to_string(),
+            "rotated" => {
+                "Trust material was rotated and should be verified before dispatch.".to_string()
+            }
+            "revoked" => {
+                "Trust has been revoked. Do not rely on this edge until it is re-enrolled."
+                    .to_string()
+            }
+            "untrusted" => "This edge has not completed trusted enrollment yet.".to_string(),
+            "attention_needed" | "needs_attention" => {
+                "This edge needs trust review before it should be used for sensitive work."
+                    .to_string()
+            }
+            _ => "The API did not include a detailed trust summary for this edge.".to_string(),
+        })
+}
+
+fn device_enrollment_label(device: &DeviceRecord) -> String {
+    match device
+        .trust
+        .enrollment_kind
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        Some("primary") if device.primary_flag => "Primary edge".to_string(),
+        Some("primary") => "Primary enrollment".to_string(),
+        Some("additional_edge") => "Additional edge".to_string(),
+        Some("re_enrollment") => "Re-enrollment".to_string(),
+        Some("rotation") => "Key rotation".to_string(),
+        Some(value) => value.replace('_', " "),
+        None if device.primary_flag => "Primary edge".to_string(),
+        None => "Additional edge".to_string(),
+    }
+}
+
+fn device_trust_timestamps(device: &DeviceRecord) -> Vec<(String, String)> {
+    let mut items = vec![("Seen".to_string(), device.last_seen_at.clone())];
+
+    if let Some(value) = device
+        .trust
+        .last_trusted_registration_at
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        items.push(("Trusted".to_string(), value.to_string()));
+    }
+
+    if let Some(value) = device
+        .trust
+        .rotated_at
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        items.push(("Rotated".to_string(), value.to_string()));
+    }
+
+    if let Some(value) = device
+        .trust
+        .revoked_at
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        items.push(("Revoked".to_string(), value.to_string()));
+    }
+
+    items
+}
+
+fn device_option_label(device: &DeviceRecord) -> String {
+    let mut segments = vec![format!("{} ({})", device.name, device.id)];
+
+    segments.push(device_enrollment_label(device));
+    segments.push(device_trust_status_label(&device.trust));
+
+    segments.join(" · ")
+}
+
+fn device_trust_card(
+    device: Option<DeviceRecord>,
+    compact: bool,
+    test_id: Option<&'static str>,
+) -> impl IntoView {
+    match device {
+        Some(device) => {
+            let trust_label = device_trust_status_label(&device.trust);
+            let trust_class = device_trust_status_class(&device.trust);
+            let enrollment_label = device_enrollment_label(&device);
+            let summary = device_trust_summary(&device);
+            let timestamps = device_trust_timestamps(&device);
+            let trust_attention = device_requires_trust_attention(&device);
+            let dispatch_note = match device.trust.can_dispatch {
+                Some(false) => Some("Dispatch should stay blocked until this trust issue is resolved.".to_string()),
+                Some(true) if trust_attention => {
+                    Some("Dispatch is still possible, but operators should confirm why this edge needs trust attention.".to_string())
+                }
+                _ => None,
+            };
+
+            view! {
+                <article
+                    class=("device-trust-card", true)
+                    class:compact=compact
+                    class:attention=trust_attention
+                    data-testid=test_id.unwrap_or("")
+                >
+                    <header>
+                        <div>
+                            <p class="eyebrow">"Trust State"</p>
+                            <h4>{device.name.clone()}</h4>
+                            <p class="status">{format!("{} · {}", device.id, enrollment_label)}</p>
+                        </div>
+                        <span class=format!("trust-badge {}", trust_class)>{trust_label}</span>
+                    </header>
+                    <p class="device-trust-summary">{summary}</p>
+                    <div class="device-trust-meta">
+                        <For
+                            each=move || timestamps.clone()
+                            key=|(label, _)| label.clone()
+                            children=move |(label, value)| {
+                                view! {
+                                    <span>{format!("{label}: {value}")}</span>
+                                }
+                            }
+                        />
+                    </div>
+                    {dispatch_note.map(|note| {
+                        view! { <p class="device-trust-warning">{note}</p> }
+                    })}
+                </article>
+            }
+            .into_any()
+        }
+        None => view! {
+            <div class="device-trust-empty">
+                <p>"Select a device to review its trust state before dispatching."</p>
+            </div>
+        }
+        .into_any(),
+    }
 }
 
 fn repositories_for_device(devices: &[DeviceRecord], device_id: &str) -> Vec<DeviceRepository> {
@@ -171,11 +391,17 @@ fn preferred_repository_value(
     current_value: &str,
     fallback_value: &str,
 ) -> String {
-    if repositories.iter().any(|repository| repository.name == current_value) {
+    if repositories
+        .iter()
+        .any(|repository| repository.name == current_value)
+    {
         return current_value.to_string();
     }
 
-    if repositories.iter().any(|repository| repository.name == fallback_value) {
+    if repositories
+        .iter()
+        .any(|repository| repository.name == fallback_value)
+    {
         return fallback_value.to_string();
     }
 
@@ -185,7 +411,11 @@ fn preferred_repository_value(
         .unwrap_or_default()
 }
 
-fn preferred_branch_value(branches: &[String], current_value: &str, fallback_value: &str) -> String {
+fn preferred_branch_value(
+    branches: &[String],
+    current_value: &str,
+    fallback_value: &str,
+) -> String {
     if branches.iter().any(|branch| branch == current_value) {
         return current_value.to_string();
     }
@@ -452,7 +682,7 @@ pub fn App() -> impl IntoView {
     let (threads, set_threads) = signal(Vec::<ThreadSummary>::new());
     let (jobs, set_jobs) = signal(Vec::<JobRecord>::new());
     let (devices, set_devices) = signal(Vec::<DeviceRecord>::new());
-    let (repositories, set_repositories) = signal(Vec::<RepositoryOption>::new());
+    let (_repositories, set_repositories) = signal(Vec::<RepositoryOption>::new());
     let (sidebar_open, set_sidebar_open) = signal(false);
     let (context_open, set_context_open) =
         signal(read_bool_storage(STORAGE_CONTEXT_OPEN).unwrap_or(false));
@@ -485,6 +715,7 @@ pub fn App() -> impl IntoView {
     let (pending_chat_submission, set_pending_chat_submission) =
         signal(None::<PendingChatSubmission>);
     let (draft_edits, set_draft_edits) = signal(HashMap::<String, DraftEditState>::new());
+    let (context_tab, set_context_tab) = signal(ContextTab::Thread);
     let (realtime_status, set_realtime_status) = signal(RealtimeStatus::Connecting);
     let (event_source, set_event_source) = signal(None::<EventSource>);
     let realtime_runtime = StoredValue::new_local(RealtimeRuntime::default());
@@ -492,9 +723,15 @@ pub fn App() -> impl IntoView {
     let composer_textarea_ref = NodeRef::<html::Textarea>::new();
 
     Effect::new(move |_| {
+        let _ = selected_thread_id.get();
+        set_context_tab.set(ContextTab::Thread);
+    });
+
+    Effect::new(move |_| {
         let device_options = devices.get();
         let current_device = new_job_device.get();
-        let next_device = preferred_device_value(&device_options, &current_device, &new_job_repo.get());
+        let next_device =
+            preferred_device_value(&device_options, &current_device, &new_job_repo.get());
         if next_device != current_device {
             set_new_job_device.set(next_device.clone());
         }
@@ -1960,17 +2197,18 @@ pub fn App() -> impl IntoView {
                                                                                                                 each=move || devices.get()
                                                                                                                 key=|device| device.id.clone()
                                                                                                                 children=move |device| {
-                                                                                                                    let label = if device.primary_flag {
-                                                                                                                        format!("{} ({}) · primary", device.name, device.id)
-                                                                                                                    } else {
-                                                                                                                        format!("{} ({})", device.name, device.id)
-                                                                                                                    };
+                                                                                                                    let label = device_option_label(&device);
                                                                                                                     view! {
                                                                                                                         <option value=device.id.clone()>{label}</option>
                                                                                                                     }
                                                                                                                 }
                                                                                                             />
                                                                                                         </select>
+                                                                                                        {move || {
+                                                                                                            let device =
+                                                                                                                selected_device(&devices.get(), &selected_device_id.get());
+                                                                                                            device_trust_card(device, true, Some("draft-device-trust")).into_any()
+                                                                                                        }}
                                                                                                     </div>
                                                                                                     <div class="draft-field">
                                                                                                         <strong>"Repository"</strong>
@@ -2427,6 +2665,45 @@ pub fn App() -> impl IntoView {
                                         </button>
                                     </div>
 
+                                    <div class="context-tabs" role="tablist" aria-label="Conversation detail sections">
+                                        <button
+                                            type="button"
+                                            class="context-tab"
+                                            class:active=move || context_tab.get() == ContextTab::Thread
+                                            aria-selected=move || context_tab.get() == ContextTab::Thread
+                                            on:click=move |_| set_context_tab.set(ContextTab::Thread)
+                                        >
+                                            "Thread"
+                                        </button>
+                                        <button
+                                            type="button"
+                                            class="context-tab"
+                                            class:active=move || context_tab.get() == ContextTab::Devices
+                                            aria-selected=move || context_tab.get() == ContextTab::Devices
+                                            on:click=move |_| set_context_tab.set(ContextTab::Devices)
+                                        >
+                                            "Devices"
+                                        </button>
+                                        <button
+                                            type="button"
+                                            class="context-tab"
+                                            class:active=move || context_tab.get() == ContextTab::Job
+                                            aria-selected=move || context_tab.get() == ContextTab::Job
+                                            on:click=move |_| set_context_tab.set(ContextTab::Job)
+                                        >
+                                            "Selected Job"
+                                        </button>
+                                        <button
+                                            type="button"
+                                            class="context-tab"
+                                            class:active=move || context_tab.get() == ContextTab::Manual
+                                            aria-selected=move || context_tab.get() == ContextTab::Manual
+                                            on:click=move |_| set_context_tab.set(ContextTab::Manual)
+                                        >
+                                            "Manual Job"
+                                        </button>
+                                    </div>
+
                                     <div class="context-body">
                                         {move || {
                                             if let Some(thread) = selected_thread.get() {
@@ -2436,10 +2713,12 @@ pub fn App() -> impl IntoView {
                                                 let thread_notes = thread.related_notes.clone();
                                                 let has_jobs = !jobs.is_empty();
                                                 let active_job_id = selected_job_id.get();
+                                                let active_context_tab = context_tab.get();
 
                                                 view! {
-                                                    <details class="context-panel" open>
-                                                        <summary>"Thread Context"</summary>
+                                                    {if active_context_tab == ContextTab::Thread {
+                                                        view! {
+                                                        <section class="context-panel context-tab-panel" data-testid="context-tab-thread">
                                                         <div class="context-panel-body">
                                                             <div class="note-list">
                                                                 <p class="eyebrow">"Related Notes"</p>
@@ -2525,8 +2804,58 @@ pub fn App() -> impl IntoView {
                                                                 }}
                                                             </div>
                                                         </div>
-                                                    </details>
+                                                        </section>
+                                                        }.into_any()
+                                                    } else {
+                                                        ().into_any()
+                                                    }}
+                                                    {if active_context_tab == ContextTab::Devices {
+                                                        view! {
+                                                    <section class="context-panel context-tab-panel" data-testid="context-tab-devices">
+                                                        <div class="context-panel-body">
+                                                            <div class="job-browser-header">
+                                                                <div>
+                                                                    <p class="eyebrow">"Trust Visibility"</p>
+                                                                    <h2>"Edge trust and enrollment state"</h2>
+                                                                    <p class="status">
+                                                                        "Trust state is shown separately from generic device freshness so operators can spot revoked or risky edges quickly."
+                                                                    </p>
+                                                                </div>
+                                                                <span class="thread-pill">{move || format!("{} devices", devices.get().len())}</span>
+                                                            </div>
+                                                            <div class="device-trust-list" data-testid="device-trust-list">
+                                                                <For
+                                                                    each=move || devices.get()
+                                                                    key=|device| device.id.clone()
+                                                                    children=move |device| {
+                                                                        device_trust_card(Some(device), false, None)
+                                                                    }
+                                                                />
+                                                                {move || {
+                                                                    if devices.get().is_empty() {
+                                                                        view! {
+                                                                            <div class="empty">
+                                                                                <p class="eyebrow">"No Devices"</p>
+                                                                                <p>"Device trust state will appear here when the API reports registered edges."</p>
+                                                                            </div>
+                                                                        }
+                                                                        .into_any()
+                                                                    } else {
+                                                                        ().into_any()
+                                                                    }
+                                                                }}
+                                                            </div>
+                                                        </div>
+                                                    </section>
+                                                        }.into_any()
+                                                    } else {
+                                                        ().into_any()
+                                                    }}
                                                     {move || {
+                                                        if active_context_tab != ContextTab::Job {
+                                                            return ().into_any();
+                                                        }
+
                                                         if let Some(job_detail) = selected_job_detail.get() {
                                                             let execution_report = job_detail.execution_report_json.clone();
                                                             let build_status = report_status_label(&execution_report, "build");
@@ -2541,8 +2870,7 @@ pub fn App() -> impl IntoView {
                                                             let approval_thread_id = thread_id.clone();
 
                                                             view! {
-                                                                <details class="context-panel" open>
-                                                                    <summary>"Selected Job"</summary>
+                                                                <section class="context-panel context-tab-panel" data-testid="context-tab-job">
                                                                     <div class="context-panel-body">
                                                                         <section class="job-detail">
                                                                             <p class="eyebrow">"Job Detail"</p>
@@ -2847,24 +3175,24 @@ pub fn App() -> impl IntoView {
                                                                             </div>
                                                                         </section>
                                                                     </div>
-                                                                </details>
+                                                                </section>
                                                             }.into_any()
                                                         } else {
                                                             view! {
-                                                                <details class="context-panel" open>
-                                                                    <summary>"Selected Job"</summary>
+                                                                <section class="context-panel context-tab-panel" data-testid="context-tab-job">
                                                                     <div class="context-panel-body">
                                                                         <div class="empty">
                                                                             <p class="eyebrow">"No Job Selected"</p>
                                                                             <p>"Choose a job to inspect the live execution detail and event history."</p>
                                                                         </div>
                                                                     </div>
-                                                                </details>
+                                                                </section>
                                                             }.into_any()
                                                         }
                                                     }}
-                                                    <details class="context-panel">
-                                                        <summary>"Advanced Manual Job"</summary>
+                                                    {if active_context_tab == ContextTab::Manual {
+                                                        view! {
+                                                    <section class="context-panel context-tab-panel" data-testid="context-tab-manual">
                                                         <div class="context-panel-body">
                                                             <form on:submit=move |ev: ev::SubmitEvent| {
                                                                 ev.prevent_default();
@@ -2963,17 +3291,18 @@ pub fn App() -> impl IntoView {
                                                                         each=move || devices.get()
                                                                         key=|device| device.id.clone()
                                                                         children=move |device| {
-                                                                            let label = if device.primary_flag {
-                                                                                format!("{} ({}) · primary", device.name, device.id)
-                                                                            } else {
-                                                                                format!("{} ({})", device.name, device.id)
-                                                                            };
+                                                                            let label = device_option_label(&device);
                                                                             view! {
                                                                                 <option value=device.id.clone()>{label}</option>
                                                                             }
                                                                         }
                                                                     />
                                                                 </select>
+                                                                {move || {
+                                                                    let device =
+                                                                        selected_device(&devices.get(), &new_job_device.get());
+                                                                    device_trust_card(device, true, Some("manual-job-device-trust")).into_any()
+                                                                }}
                                                                 <select
                                                                     prop:value=move || new_job_repo.get()
                                                                     prop:disabled=move || auth_session
@@ -3042,7 +3371,11 @@ pub fn App() -> impl IntoView {
                                                                 </button>
                                                             </form>
                                                         </div>
-                                                    </details>
+                                                    </section>
+                                                        }.into_any()
+                                                    } else {
+                                                        ().into_any()
+                                                    }}
                                                 }.into_any()
                                             } else {
                                                 view! {
@@ -3061,5 +3394,69 @@ pub fn App() -> impl IntoView {
                 }
             }}
         </main>
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        device_enrollment_label, device_option_label, device_requires_trust_attention,
+        device_trust_status_label,
+    };
+    use crate::models::{DeviceRecord, DeviceRepository, DeviceTrustRecord};
+
+    fn sample_device() -> DeviceRecord {
+        DeviceRecord {
+            id: "travel-edge-02".into(),
+            name: "Travel Edge".into(),
+            primary_flag: false,
+            allowed_repos: vec!["elowen-ui".into()],
+            allowed_repo_roots: vec!["C:/Users/ericw/Projects/elowen/elowen-ui".into()],
+            hidden_repos: Vec::new(),
+            excluded_repo_paths: Vec::new(),
+            discovered_repos: vec!["elowen-ui".into()],
+            repositories: vec![DeviceRepository {
+                name: "elowen-ui".into(),
+                branches: vec!["main".into()],
+            }],
+            capabilities: vec!["workspace_change".into()],
+            trust: DeviceTrustRecord {
+                status: "attention_needed".into(),
+                label: None,
+                summary: Some("Review the re-enrollment before dispatch.".into()),
+                detail: None,
+                reason: None,
+                enrollment_kind: Some("re_enrollment".into()),
+                last_trusted_registration_at: Some("2026-04-14T16:20:00Z".into()),
+                rotated_at: Some("2026-04-15T09:10:00Z".into()),
+                revoked_at: None,
+                updated_at: Some("2026-04-15T14:32:00Z".into()),
+                can_dispatch: Some(false),
+                requires_attention: true,
+            },
+            registered_at: "2026-04-13T18:00:00Z".into(),
+            last_seen_at: "2026-04-15T14:21:00Z".into(),
+            created_at: "2026-04-13T17:40:00Z".into(),
+            updated_at: "2026-04-15T14:40:00Z".into(),
+        }
+    }
+
+    #[test]
+    fn formats_enrollment_and_trust_labels_for_multi_edge_devices() {
+        let device = sample_device();
+
+        assert_eq!(device_enrollment_label(&device), "Re-enrollment");
+        assert_eq!(device_trust_status_label(&device.trust), "Needs Attention");
+        assert_eq!(
+            device_option_label(&device),
+            "Travel Edge (travel-edge-02) · Re-enrollment · Needs Attention"
+        );
+    }
+
+    #[test]
+    fn marks_revoked_or_attention_devices_for_operator_review() {
+        let device = sample_device();
+
+        assert!(device_requires_trust_attention(&device));
     }
 }

@@ -154,6 +154,16 @@ async function handleApiRequest(req, res, pathname) {
     return;
   }
 
+  if (pathname === "/api/v1/devices" && req.method === "GET") {
+    if (!canOperate(session)) {
+      writeJson(res, 403, { error: "the signed-in account is not allowed to perform this action" });
+      return;
+    }
+
+    writeJson(res, 200, session.state.devices);
+    return;
+  }
+
   if (pathname === `/api/v1/threads/${session.state.thread.id}` && req.method === "GET") {
     writeJson(res, 200, session.state.thread);
     return;
@@ -505,8 +515,95 @@ function createSession({ scenario, actor, authMode }) {
     jobs: [structuredClone(jobRecord)],
     repositories: [
       { name: "elowen-api", device_count: 1 },
-      { name: "elowen-ui", device_count: 1 },
+      { name: "elowen-ui", device_count: 2 },
       { name: "elowen-platform", device_count: 1 },
+    ],
+    devices: [
+      {
+        id: "laptop-edge-01",
+        name: "Laptop Edge",
+        primary_flag: true,
+        allowed_repos: ["elowen-ui", "elowen-api", "elowen-platform"],
+        allowed_repo_roots: ["C:/Users/ericw/Projects/elowen"],
+        hidden_repos: [],
+        excluded_repo_paths: [],
+        discovered_repos: ["elowen-ui", "elowen-api", "elowen-platform"],
+        repositories: [
+          { name: "elowen-ui", branches: ["main", "slice/34-ui-trust-state"] },
+          { name: "elowen-api", branches: ["main"] },
+          { name: "elowen-platform", branches: ["main"] },
+        ],
+        capabilities: ["workspace_change", "read_only", "trusted_enrollment"],
+        trust: {
+          status: "trusted",
+          label: "Trusted",
+          summary: "Primary laptop edge is healthy and can accept trusted dispatches.",
+          enrollment_kind: "primary",
+          last_trusted_registration_at: "2026-04-15T13:55:00Z",
+          updated_at: "2026-04-15T14:35:00Z",
+          can_dispatch: true,
+          requires_attention: false,
+        },
+        registered_at: "2026-04-15T12:00:00Z",
+        last_seen_at: "2026-04-15T14:39:00Z",
+        created_at: "2026-04-15T11:55:00Z",
+        updated_at: now,
+      },
+      {
+        id: "travel-edge-02",
+        name: "Travel Edge",
+        primary_flag: false,
+        allowed_repos: ["elowen-ui"],
+        allowed_repo_roots: ["C:/Users/ericw/Projects/elowen/elowen-ui"],
+        hidden_repos: [],
+        excluded_repo_paths: [],
+        discovered_repos: ["elowen-ui"],
+        repositories: [{ name: "elowen-ui", branches: ["main"] }],
+        capabilities: ["workspace_change", "read_only"],
+        trust: {
+          status: "attention_needed",
+          label: "Needs Attention",
+          summary: "This additional edge was re-enrolled with a new key and should be reviewed before more trusted work is dispatched.",
+          detail: "Verify that the new key belongs to the intended additional device before using it for Slice 34 work.",
+          enrollment_kind: "re_enrollment",
+          last_trusted_registration_at: "2026-04-14T16:20:00Z",
+          rotated_at: "2026-04-15T09:10:00Z",
+          updated_at: "2026-04-15T14:32:00Z",
+          can_dispatch: false,
+          requires_attention: true,
+        },
+        registered_at: "2026-04-13T18:00:00Z",
+        last_seen_at: "2026-04-15T14:21:00Z",
+        created_at: "2026-04-13T17:40:00Z",
+        updated_at: now,
+      },
+      {
+        id: "retired-edge-03",
+        name: "Retired Edge",
+        primary_flag: false,
+        allowed_repos: ["elowen-ui"],
+        allowed_repo_roots: ["C:/Users/ericw/Projects/elowen/elowen-ui"],
+        hidden_repos: [],
+        excluded_repo_paths: [],
+        discovered_repos: ["elowen-ui"],
+        repositories: [{ name: "elowen-ui", branches: ["main"] }],
+        capabilities: ["read_only"],
+        trust: {
+          status: "revoked",
+          label: "Revoked",
+          summary: "Trust for this edge has been revoked after retirement.",
+          reason: "Do not dispatch new work here.",
+          enrollment_kind: "additional_edge",
+          revoked_at: "2026-04-15T08:00:00Z",
+          updated_at: "2026-04-15T08:00:00Z",
+          can_dispatch: false,
+          requires_attention: true,
+        },
+        registered_at: "2026-04-10T12:00:00Z",
+        last_seen_at: "2026-04-12T10:15:00Z",
+        created_at: "2026-04-10T11:30:00Z",
+        updated_at: now,
+      },
     ],
     job: {
       ...structuredClone(jobRecord),
