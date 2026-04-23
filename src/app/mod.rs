@@ -23,9 +23,9 @@ use crate::{
     },
     format::{
         approval_status_note, execution_intent_label, format_json_value, format_string_list,
-        message_execution_draft, message_is_result_surface, message_mode_badge, message_mode_class,
-        message_result_details, message_timestamp_label, report_array_strings, report_diff_stat,
-        report_last_message, report_status_label, status_badge_class,
+        job_target_label, message_execution_draft, message_is_result_surface, message_mode_badge,
+        message_mode_class, message_result_details, message_timestamp_label, report_array_strings,
+        report_diff_stat, report_last_message, report_status_label, status_badge_class,
     },
     models::*,
 };
@@ -61,9 +61,9 @@ struct PendingChatSubmission {
 #[derive(Clone)]
 struct DraftEditState {
     device_id: String,
-    repo_name: String,
+    target_name: String,
     base_branch: String,
-    request_text: String,
+    prompt: String,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -386,6 +386,33 @@ fn preferred_device_value(
         .unwrap_or_default()
 }
 
+fn device_has_capability(device: &DeviceRecord, capability_name: &str) -> bool {
+    device
+        .capabilities
+        .iter()
+        .any(|capability| capability.trim() == capability_name)
+}
+
+fn preferred_capability_device_value(
+    devices: &[DeviceRecord],
+    current_value: &str,
+    capability_name: &str,
+) -> String {
+    if device_option_exists(devices, current_value)
+        && selected_device(devices, current_value)
+            .map(|device| device_has_capability(&device, capability_name))
+            .unwrap_or(false)
+    {
+        return current_value.to_string();
+    }
+
+    devices
+        .iter()
+        .find(|device| device_has_capability(device, capability_name))
+        .map(|device| device.id.clone())
+        .unwrap_or_default()
+}
+
 fn preferred_repository_value(
     repositories: &[DeviceRepository],
     current_value: &str,
@@ -537,7 +564,7 @@ fn synthetic_job_created_message(
         .or(job.device_id.as_deref())
         .unwrap_or("unassigned");
     let request_text = event_payload
-        .get("request_text")
+        .get("prompt")
         .and_then(Value::as_str)
         .map(str::trim)
         .filter(|value| !value.is_empty());
@@ -553,14 +580,17 @@ fn synthetic_job_created_message(
         _ => "The job was created from this thread.",
     };
     let content = format!(
-        "Created job `{}` for repo `{}` on device `{}`. {}",
-        job.short_id, job.repo_name, device_id, status_note
+        "Created job `{}` for {} on device `{}`. {}",
+        job.short_id,
+        job_target_label(job),
+        device_id,
+        status_note
     );
 
     let mut detail_lines = vec![
         format!("Job: {}", job.short_id),
         format!("Status: {}", job.status),
-        format!("Repository: {}", job.repo_name),
+        format!("Target: {}", job_target_label(job)),
         format!("Correlation: {}", job.correlation_id),
     ];
     if let Some(branch_name) = job.branch_name.as_deref().filter(|value| !value.is_empty()) {
@@ -570,7 +600,7 @@ fn synthetic_job_created_message(
         detail_lines.push(format!("Base branch: {base_branch}"));
     }
     if let Some(request_text) = request_text {
-        detail_lines.push(format!("Request: {request_text}"));
+        detail_lines.push(format!("Prompt: {request_text}"));
     }
 
     Some(MessageRecord {
@@ -678,6 +708,7 @@ fn clear_pending_chat_submission(
 }
 
 #[component]
+#[allow(clippy::redundant_locals)]
 pub fn App() -> impl IntoView {
     let (threads, set_threads) = signal(Vec::<ThreadSummary>::new());
     let (jobs, set_jobs) = signal(Vec::<JobRecord>::new());
@@ -1881,7 +1912,7 @@ pub fn App() -> impl IntoView {
                                                                                 <span class="status">{job.short_id.clone()}</span>
                                                                             </div>
                                                                         </div>
-                                                                        <strong>{job.repo_name.clone()}</strong>
+                                                                        <strong>{job_target_label(&job)}</strong>
                                                                     </header>
                                                                     <div class="job-meta">
                                                                         <span>{format!("Thread: {}", thread_label)}</span>
@@ -2061,18 +2092,30 @@ pub fn App() -> impl IntoView {
                                                                                         let source_message_id = message_id.clone();
                                                                                         let source_role = draft.source_role.clone();
                                                                                         let title = draft.title.clone();
-                                                                                        let repo_name = draft.repo_name.unwrap_or_default();
-                                                                                        let base_branch = draft.base_branch.clone();
-                                                                                        let request_text = draft.request_text.clone();
+                                                                                        let target_kind = draft.target_kind.clone();
+                                                                                        let target_name = draft.target_name.clone();
+                                                                                        let base_branch = draft
+                                                                                            .base_branch
+                                                                                            .clone()
+                                                                                            .unwrap_or_else(|| "main".to_string());
+                                                                                        let prompt = draft.prompt.clone();
                                                                                         let execution_intent = draft.execution_intent.clone();
-                                                                                        let initial_device_id = preferred_device_value(
-                                                                                            &devices.get_untracked(),
-                                                                                            "",
-                                                                                            &repo_name,
-                                                                                        );
-                                                                                        let initial_repo_name = preferred_repository_value(
+                                                                                        let initial_device_id = if matches!(target_kind, JobTargetKind::Repository) {
+                                                                                            preferred_device_value(
+                                                                                                &devices.get_untracked(),
+                                                                                                "",
+                                                                                                &target_name,
+                                                                                            )
+                                                                                        } else {
+                                                                                            preferred_capability_device_value(
+                                                                                                &devices.get_untracked(),
+                                                                                                "",
+                                                                                                &target_name,
+                                                                                            )
+                                                                                        };
+                                                                                        let initial_target_name = preferred_repository_value(
                                                                                             &repositories_for_device(&devices.get_untracked(), &initial_device_id),
-                                                                                            &repo_name,
+                                                                                            &target_name,
                                                                                             "",
                                                                                         );
                                                                                         let draft_key = message_id.clone();
@@ -2082,29 +2125,38 @@ pub fn App() -> impl IntoView {
                                                                                             .cloned()
                                                                                             .unwrap_or_else(|| DraftEditState {
                                                                                                 device_id: initial_device_id.clone(),
-                                                                                                repo_name: initial_repo_name.clone(),
+                                                                                                target_name: initial_target_name.clone(),
                                                                                                 base_branch: base_branch.clone(),
-                                                                                                request_text: request_text.clone(),
+                                                                                                prompt: prompt.clone(),
                                                                                             });
                                                                                         let (selected_device_id, set_selected_device_id) =
                                                                                             signal(initial_draft_edit.device_id);
-                                                                                        let (selected_repo_name, set_selected_repo_name) =
-                                                                                            signal(initial_draft_edit.repo_name);
+                                                                                        let (selected_target_name, set_selected_target_name) =
+                                                                                            signal(initial_draft_edit.target_name);
                                                                                         let (selected_base_branch, set_selected_base_branch) =
                                                                                             signal(initial_draft_edit.base_branch);
-                                                                                        let (selected_request_text, set_selected_request_text) =
-                                                                                            signal(initial_draft_edit.request_text);
+                                                                                        let (selected_prompt, set_selected_prompt) =
+                                                                                            signal(initial_draft_edit.prompt);
                                                                                         Effect::new({
                                                                                             let devices = devices;
-                                                                                            let repo_name = repo_name.clone();
+                                                                                            let target_name = target_name.clone();
+                                                                                            let target_kind = target_kind.clone();
                                                                                             let set_selected_device_id = set_selected_device_id;
                                                                                             move |_| {
                                                                                                 let current_value = selected_device_id.get();
-                                                                                                let next_value = preferred_device_value(
-                                                                                                    &devices.get(),
-                                                                                                    &current_value,
-                                                                                                    &repo_name,
-                                                                                                );
+                                                                                                let next_value = if matches!(target_kind, JobTargetKind::Repository) {
+                                                                                                    preferred_device_value(
+                                                                                                        &devices.get(),
+                                                                                                        &current_value,
+                                                                                                        &target_name,
+                                                                                                    )
+                                                                                                } else {
+                                                                                                    preferred_capability_device_value(
+                                                                                                        &devices.get(),
+                                                                                                        &current_value,
+                                                                                                        &target_name,
+                                                                                                    )
+                                                                                                };
                                                                                                 if next_value != current_value {
                                                                                                     set_selected_device_id.set(next_value);
                                                                                                 }
@@ -2112,18 +2164,22 @@ pub fn App() -> impl IntoView {
                                                                                         });
                                                                                         Effect::new({
                                                                                             let devices = devices;
-                                                                                            let repo_name = repo_name.clone();
-                                                                                            let set_selected_repo_name = set_selected_repo_name;
+                                                                                            let target_name = target_name.clone();
+                                                                                            let target_kind = target_kind.clone();
+                                                                                            let set_selected_target_name = set_selected_target_name;
                                                                                             move |_| {
+                                                                                                if !matches!(target_kind, JobTargetKind::Repository) {
+                                                                                                    return;
+                                                                                                }
                                                                                                 let current_device = selected_device_id.get();
-                                                                                                let current_value = selected_repo_name.get();
+                                                                                                let current_value = selected_target_name.get();
                                                                                                 let next_value = preferred_repository_value(
                                                                                                     &repositories_for_device(&devices.get(), &current_device),
                                                                                                     &current_value,
-                                                                                                    &repo_name,
+                                                                                                    &target_name,
                                                                                                 );
                                                                                                 if next_value != current_value {
-                                                                                                    set_selected_repo_name.set(next_value);
+                                                                                                    set_selected_target_name.set(next_value);
                                                                                                 }
                                                                                             }
                                                                                         });
@@ -2132,17 +2188,17 @@ pub fn App() -> impl IntoView {
                                                                                             let set_draft_edits = set_draft_edits;
                                                                                             move |_| {
                                                                                                 let device_id = selected_device_id.get();
-                                                                                                let repo_name = selected_repo_name.get();
+                                                                                                let target_name = selected_target_name.get();
                                                                                                 let base_branch = selected_base_branch.get();
-                                                                                                let request_text = selected_request_text.get();
+                                                                                                let prompt = selected_prompt.get();
                                                                                                 set_draft_edits.update(|draft_edits| {
                                                                                                     draft_edits.insert(
                                                                                                         draft_key.clone(),
                                                                                                         DraftEditState {
                                                                                                             device_id,
-                                                                                                            repo_name,
+                                                                                                            target_name,
                                                                                                             base_branch,
-                                                                                                            request_text,
+                                                                                                            prompt,
                                                                                                         },
                                                                                                     );
                                                                                                 });
@@ -2151,10 +2207,14 @@ pub fn App() -> impl IntoView {
                                                                                         Effect::new({
                                                                                             let devices = devices;
                                                                                             let fallback_branch = base_branch.clone();
+                                                                                            let target_kind = target_kind.clone();
                                                                                             let set_selected_base_branch = set_selected_base_branch;
                                                                                             move |_| {
+                                                                                                if !matches!(target_kind, JobTargetKind::Repository) {
+                                                                                                    return;
+                                                                                                }
                                                                                                 let current_device = selected_device_id.get();
-                                                                                                let current_repo = selected_repo_name.get();
+                                                                                                let current_repo = selected_target_name.get();
                                                                                                 let current_branch = selected_base_branch.get();
                                                                                                 let next_branch = preferred_branch_value(
                                                                                                     &branches_for_device_repository(
@@ -2174,7 +2234,7 @@ pub fn App() -> impl IntoView {
                                                                                             <section class="execution-draft">
                                                                                                 <header>
                                                                                                     <div>
-                                                                                                        <p class="eyebrow">"Execution Draft"</p>
+                                                                                                        <p class="eyebrow">{if matches!(target_kind, JobTargetKind::Repository) { "Execution Draft" } else { "Capability Draft" }}</p>
                                                                                                         <h4>{title.clone()}</h4>
                                                                                                         <p class="draft-rationale">{draft.rationale}</p>
                                                                                                     </div>
@@ -2211,73 +2271,88 @@ pub fn App() -> impl IntoView {
                                                                                                         }}
                                                                                                     </div>
                                                                                                     <div class="draft-field">
-                                                                                                        <strong>"Repository"</strong>
-                                                                                                        <select
-                                                                                                            class="draft-field-control"
-                                                                                                            prop:value=move || selected_repo_name.get()
-                                                                                                            prop:disabled=move || auth_session
-                                                                                                                .get()
-                                                                                                                .map(|session| !session_can_operate(&session))
-                                                                                                                .unwrap_or(true)
-                                                                                                            on:change=move |ev| set_selected_repo_name.set(event_target_value(&ev))
-                                                                                                        >
-                                                                                                            <option value="">"Select a repository"</option>
-                                                                                                            <For
-                                                                                                                each=move || repositories_for_device(&devices.get(), &selected_device_id.get())
-                                                                                                                key=|repository| repository.name.clone()
-                                                                                                                children=move |repository| {
-                                                                                                                    view! {
-                                                                                                                        <option value=repository.name.clone()>{repository.name.clone()}</option>
-                                                                                                                    }
-                                                                                                                }
-                                                                                                            />
-                                                                                                        </select>
+                                                                                                        <strong>{if matches!(target_kind, JobTargetKind::Repository) { "Repository" } else { "Capability" }}</strong>
+                                                                                                        {if matches!(target_kind, JobTargetKind::Repository) {
+                                                                                                            view! {
+                                                                                                                <select
+                                                                                                                    class="draft-field-control"
+                                                                                                                    prop:value=move || selected_target_name.get()
+                                                                                                                    prop:disabled=move || auth_session
+                                                                                                                        .get()
+                                                                                                                        .map(|session| !session_can_operate(&session))
+                                                                                                                        .unwrap_or(true)
+                                                                                                                    on:change=move |ev| set_selected_target_name.set(event_target_value(&ev))
+                                                                                                                >
+                                                                                                                    <option value="">"Select a repository"</option>
+                                                                                                                    <For
+                                                                                                                        each=move || repositories_for_device(&devices.get(), &selected_device_id.get())
+                                                                                                                        key=|repository| repository.name.clone()
+                                                                                                                        children=move |repository| {
+                                                                                                                            view! { <option value=repository.name.clone()>{repository.name.clone()}</option> }
+                                                                                                                        }
+                                                                                                                    />
+                                                                                                                </select>
+                                                                                                            }.into_any()
+                                                                                                        } else {
+                                                                                                            view! {
+                                                                                                                <input
+                                                                                                                    class="draft-field-control"
+                                                                                                                    type="text"
+                                                                                                                    prop:value=move || selected_target_name.get()
+                                                                                                                    prop:disabled=move || auth_session
+                                                                                                                        .get()
+                                                                                                                        .map(|session| !session_can_operate(&session))
+                                                                                                                        .unwrap_or(true)
+                                                                                                                    on:input=move |ev| set_selected_target_name.set(event_target_value(&ev))
+                                                                                                                />
+                                                                                                            }.into_any()
+                                                                                                        }}
                                                                                                     </div>
-                                                                                                    <div class="draft-field">
-                                                                                                        <strong>"Base Branch"</strong>
-                                                                                                        <select
-                                                                                                            class="draft-field-control"
-                                                                                                            prop:value=move || selected_base_branch.get()
-                                                                                                            prop:disabled=move || auth_session
-                                                                                                                .get()
-                                                                                                                .map(|session| !session_can_operate(&session))
-                                                                                                                .unwrap_or(true)
-                                                                                                            on:change=move |ev| set_selected_base_branch.set(event_target_value(&ev))
-                                                                                                        >
-                                                                                                            <For
-                                                                                                                each=move || {
-                                                                                                                    let branches = branches_for_device_repository(
-                                                                                                                        &devices.get(),
-                                                                                                                        &selected_device_id.get(),
-                                                                                                                        &selected_repo_name.get(),
-                                                                                                                    );
-                                                                                                                    if branches.is_empty() {
-                                                                                                                        vec![selected_base_branch.get()]
-                                                                                                                    } else {
-                                                                                                                        branches
-                                                                                                                    }
-                                                                                                                }
-                                                                                                                key=|branch| branch.clone()
-                                                                                                                children=move |branch| {
-                                                                                                                    view! {
-                                                                                                                        <option value=branch.clone()>{branch.clone()}</option>
-                                                                                                                    }
-                                                                                                                }
-                                                                                                            />
-                                                                                                        </select>
-                                                                                                    </div>
+                                                                                                    {if matches!(target_kind, JobTargetKind::Repository) {
+                                                                                                        view! {
+                                                                                                            <div class="draft-field">
+                                                                                                                <strong>"Base Branch"</strong>
+                                                                                                                <select
+                                                                                                                    class="draft-field-control"
+                                                                                                                    prop:value=move || selected_base_branch.get()
+                                                                                                                    prop:disabled=move || auth_session
+                                                                                                                        .get()
+                                                                                                                        .map(|session| !session_can_operate(&session))
+                                                                                                                        .unwrap_or(true)
+                                                                                                                    on:change=move |ev| set_selected_base_branch.set(event_target_value(&ev))
+                                                                                                                >
+                                                                                                                    <For
+                                                                                                                        each=move || {
+                                                                                                                            let branches = branches_for_device_repository(
+                                                                                                                                &devices.get(),
+                                                                                                                                &selected_device_id.get(),
+                                                                                                                                &selected_target_name.get(),
+                                                                                                                            );
+                                                                                                                            if branches.is_empty() { vec![selected_base_branch.get()] } else { branches }
+                                                                                                                        }
+                                                                                                                        key=|branch| branch.clone()
+                                                                                                                        children=move |branch| {
+                                                                                                                            view! { <option value=branch.clone()>{branch.clone()}</option> }
+                                                                                                                        }
+                                                                                                                    />
+                                                                                                                </select>
+                                                                                                            </div>
+                                                                                                        }.into_any()
+                                                                                                    } else {
+                                                                                                        ().into_any()
+                                                                                                    }}
                                                                                                 </div>
                                                                                                 <section class="draft-request">
-                                                                                                    <p class="eyebrow">"Dispatch Request"</p>
+                                                                                                    <p class="eyebrow">"Dispatch Prompt"</p>
                                                                                                     <textarea
                                                                                                         class="draft-field-control draft-request-control"
                                                                                                         rows="5"
-                                                                                                        prop:value=move || selected_request_text.get()
+                                                                                                        prop:value=move || selected_prompt.get()
                                                                                                         prop:disabled=move || auth_session
                                                                                                             .get()
                                                                                                             .map(|session| !session_can_operate(&session))
                                                                                                             .unwrap_or(true)
-                                                                                                        on:input=move |ev| set_selected_request_text.set(event_target_value(&ev))
+                                                                                                        on:input=move |ev| set_selected_prompt.set(event_target_value(&ev))
                                                                                                     ></textarea>
                                                                                                 </section>
                                                                                                 <div class="draft-actions">
@@ -2297,19 +2372,22 @@ pub fn App() -> impl IntoView {
                                                                                                                 return;
                                                                                                             }
                                                                                                             let device_id = selected_device_id.get_untracked().trim().to_string();
-                                                                                                            let repo_name = selected_repo_name.get_untracked().trim().to_string();
-                                                                                                            let request_text =
-                                                                                                                selected_request_text.get_untracked().trim().to_string();
-                                                                                                            if device_id.is_empty() || repo_name.is_empty() || request_text.is_empty() {
-                                                                                                                set_status_text.set("Draft device, repository, and request text are required before dispatching.".to_string());
+                                                                                                            let target_name = selected_target_name.get_untracked().trim().to_string();
+                                                                                                            let prompt = selected_prompt.get_untracked().trim().to_string();
+                                                                                                            if device_id.is_empty() || target_name.is_empty() || prompt.is_empty() {
+                                                                                                                set_status_text.set("Draft device, target, and prompt are required before dispatching.".to_string());
                                                                                                                 return;
                                                                                                             }
                                                                                                             let base_branch =
                                                                                                                 selected_base_branch.get_untracked().trim().to_string();
-                                                                                                            let base_branch = if base_branch.is_empty() {
-                                                                                                                "main".to_string()
+                                                                                                            let base_branch = if matches!(target_kind, JobTargetKind::Repository) {
+                                                                                                                Some(if base_branch.is_empty() {
+                                                                                                                    "main".to_string()
+                                                                                                                } else {
+                                                                                                                    base_branch
+                                                                                                                })
                                                                                                             } else {
-                                                                                                                base_branch
+                                                                                                                None
                                                                                                             };
                                                                                                             let draft_key = draft_key.clone();
                                                                                                             spawn_local({
@@ -2325,9 +2403,20 @@ pub fn App() -> impl IntoView {
                                                                                                                 let source_message_id = source_message_id.clone();
                                                                                                                 let source_role = source_role.clone();
                                                                                                                 let title = title.clone();
+                                                                                                                let target_kind = target_kind.clone();
                                                                                                                 let execution_intent = execution_intent.clone();
                                                                                                                 async move {
-                                                                                                                    match dispatch_thread_message(&thread_id, &source_message_id, &title, Some(device_id), &repo_name, &base_branch, Some(request_text), Some(execution_intent)).await {
+                                                                                                                    match dispatch_thread_message(
+                                                                                                                        &thread_id,
+                                                                                                                        &source_message_id,
+                                                                                                                        &title,
+                                                                                                                        Some(device_id),
+                                                                                                                        target_kind.clone(),
+                                                                                                                        Some(target_name),
+                                                                                                                        base_branch,
+                                                                                                                        Some(prompt),
+                                                                                                                        Some(execution_intent),
+                                                                                                                    ).await {
                                                                                                                         Ok(job) => {
                                                                                                                             set_draft_edits.update(|draft_edits| {
                                                                                                                                 draft_edits.remove(&draft_key);
@@ -2408,7 +2497,17 @@ pub fn App() -> impl IntoView {
                                                                                                                                 let source_message_id = source_message_id.clone();
                                                                                                                                 let source_role = source_role.clone();
                                                                                                                                 async move {
-                                                                                                                                    match dispatch_thread_message(&thread_id, &source_message_id, &title, Some(device_id), &repo_name, &base_branch, None, None).await {
+                                                                                                                                    match dispatch_thread_message(
+                                                                                                                                        &thread_id,
+                                                                                                                                        &source_message_id,
+                                                                                                                                        &title,
+                                                                                                                                        Some(device_id),
+                                                                                                                                        JobTargetKind::Repository,
+                                                                                                                                        Some(repo_name),
+                                                                                                                                        Some(base_branch),
+                                                                                                                                        None,
+                                                                                                                                        None,
+                                                                                                                                    ).await {
                                                                                                                                         Ok(job) => {
                                                                                                                                             set_preferred_job_id.set(Some(job.id.clone()));
                                                                                                                                             set_selected_job_id.set(Some(job.id.clone()));
@@ -2780,11 +2879,19 @@ pub fn App() -> impl IntoView {
                                                                                             <span class="status">{job.short_id.clone()}</span>
                                                                                         </div>
                                                                                     </div>
-                                                                                    <strong>{job.repo_name.clone()}</strong>
+                                                                                    <strong>{job_target_label(&job)}</strong>
                                                                                 </header>
                                                                                 <div class="job-meta">
-                                                                                    <span>{format!("Branch: {}", job.branch_name.clone().unwrap_or_else(|| "pending".to_string()))}</span>
-                                                                                    <span>{format!("Base: {}", job.base_branch.clone().unwrap_or_else(|| "main".to_string()))}</span>
+                                                                                    {if matches!(job.target_kind, JobTargetKind::Repository) {
+                                                                                        view! {
+                                                                                            <>
+                                                                                                <span>{format!("Branch: {}", job.branch_name.clone().unwrap_or_else(|| "pending".to_string()))}</span>
+                                                                                                <span>{format!("Base: {}", job.base_branch.clone().unwrap_or_else(|| "main".to_string()))}</span>
+                                                                                            </>
+                                                                                        }.into_any()
+                                                                                    } else {
+                                                                                        ().into_any()
+                                                                                    }}
                                                                                     <span>{format!("Device: {}", job.device_id.clone().unwrap_or_else(|| "unassigned".to_string()))}</span>
                                                                                     <span>{format!("Updated: {}", job.updated_at.clone())}</span>
                                                                                 </div>
@@ -2894,13 +3001,21 @@ pub fn App() -> impl IntoView {
                                                                             </div>
                                                                             <div class="job-overview">
                                                                                 <article>
-                                                                                    <p class="eyebrow">"Repository"</p>
-                                                                                    <strong>{job_detail.job.repo_name.clone()}</strong>
-                                                                                    <span>{format!("Base {}", job_detail.job.base_branch.clone().unwrap_or_else(|| "main".to_string()))}</span>
+                                                                                    <p class="eyebrow">{if matches!(job_detail.job.target_kind, JobTargetKind::Repository) { "Repository" } else { "Capability" }}</p>
+                                                                                    <strong>{job_target_label(&job_detail.job)}</strong>
+                                                                                    {if matches!(job_detail.job.target_kind, JobTargetKind::Repository) {
+                                                                                        view! { <span>{format!("Base {}", job_detail.job.base_branch.clone().unwrap_or_else(|| "main".to_string()))}</span> }.into_any()
+                                                                                    } else {
+                                                                                        view! { <span>{format!("Device {}", job_detail.job.device_id.clone().unwrap_or_else(|| "unassigned".to_string()))}</span> }.into_any()
+                                                                                    }}
                                                                                 </article>
                                                                                 <article>
-                                                                                    <p class="eyebrow">"Branch"</p>
-                                                                                    <strong>{job_detail.job.branch_name.clone().unwrap_or_else(|| "pending".to_string())}</strong>
+                                                                                    <p class="eyebrow">{if matches!(job_detail.job.target_kind, JobTargetKind::Repository) { "Branch" } else { "Target Kind" }}</p>
+                                                                                    <strong>{if matches!(job_detail.job.target_kind, JobTargetKind::Repository) {
+                                                                                        job_detail.job.branch_name.clone().unwrap_or_else(|| "pending".to_string())
+                                                                                    } else {
+                                                                                        "capability".to_string()
+                                                                                    }}</strong>
                                                                                     <span>{format!("Device {}", job_detail.job.device_id.clone().unwrap_or_else(|| "unassigned".to_string()))}</span>
                                                                                 </article>
                                                                                 <article>
@@ -3233,8 +3348,9 @@ pub fn App() -> impl IntoView {
                                                                             &thread_id,
                                                                             &title,
                                                                             Some(device_id),
-                                                                            &repo_name,
-                                                                            &base_branch,
+                                                                            JobTargetKind::Repository,
+                                                                            Some(repo_name),
+                                                                            Some(base_branch),
                                                                             &request_text,
                                                                             None,
                                                                         )
@@ -3352,7 +3468,7 @@ pub fn App() -> impl IntoView {
                                                                     />
                                                                 </select>
                                                                 <textarea
-                                                                    placeholder="Describe the coding task to dispatch"
+                                                                    placeholder="Describe the prompt to dispatch"
                                                                     prop:value=move || new_job_request_text.get()
                                                                     prop:disabled=move || auth_session
                                                                         .get()

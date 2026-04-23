@@ -656,11 +656,11 @@ function createSession({ scenario, actor, authMode }) {
               correlation_id: "corr-slice-30",
               event_type: "job.created",
               payload_json: {
-                repo_name: "elowen-ui",
+                target_name: "elowen-ui",
                 device_id: "laptop-edge-01",
                 branch_name: "slice/30-ui-browser-automation",
                 base_branch: "main",
-                request_text: "Check whether any edge agents are currently available.",
+                prompt: "Check whether any edge agents are currently available.",
               },
               created_at: now,
             },
@@ -767,15 +767,15 @@ function createThreadMessages(
       content:
         "I stayed in conversational mode and prepared a clean dispatch handoff below so you can review it before dispatching.",
       status: "conversation.reply",
-      payload_json: {
-        execution_draft: {
-          title: "Polish chat transcript surfaces",
-          repo_name: "elowen-ui",
-          base_branch: "main",
-          request_text:
-            "Tighten the chat transcript, localize timestamps, keep operational result details behind disclosure by default, and preserve the pinned composer behavior.",
-          execution_intent: "workspace_change",
-          source_message_id: "msg-user-5",
+        payload_json: {
+          execution_draft: {
+            title: "Polish chat transcript surfaces",
+            target_name: "elowen-ui",
+            base_branch: "main",
+            prompt:
+              "Tighten the chat transcript, localize timestamps, keep operational result details behind disclosure by default, and preserve the pinned composer behavior.",
+            execution_intent: "workspace_change",
+            source_message_id: "msg-user-5",
           source_role: "user",
           rationale: "Prepared from the latest user request so it can be reviewed before dispatch.",
         },
@@ -806,9 +806,9 @@ function appendChatExchange(session, content) {
     payload_json: {
       execution_draft: {
         title: "Polish transcript timestamps",
-        repo_name: "elowen-ui",
+        target_name: "elowen-ui",
         base_branch: "main",
-        request_text: content,
+        prompt: content,
         execution_intent: "workspace_change",
         source_message_id: userMessage.id,
         source_role: "user",

@@ -4,7 +4,7 @@ use js_sys::Date;
 use serde_json::Value;
 use wasm_bindgen::JsValue;
 
-use crate::models::{ExecutionDraft, ExecutionIntent, MessageRecord};
+use crate::models::{ExecutionDraft, ExecutionIntent, JobRecord, JobTargetKind, MessageRecord};
 
 pub(crate) fn format_json_value(value: &Value) -> String {
     serde_json::to_string_pretty(value).unwrap_or_else(|_| value.to_string())
@@ -100,8 +100,27 @@ pub(crate) fn execution_intent_label(intent: &ExecutionIntent) -> &'static str {
     }
 }
 
+pub(crate) fn job_target_label(job: &JobRecord) -> String {
+    match job.target_kind {
+        JobTargetKind::Repository => format!(
+            "Repository {}",
+            job.repo_name.as_deref().unwrap_or("unspecified")
+        ),
+        JobTargetKind::Capability => format!(
+            "Capability {}",
+            job.capability_name.as_deref().unwrap_or("unspecified")
+        ),
+    }
+}
+
 pub(crate) fn message_mode_class(message: &MessageRecord) -> &'static str {
-    if message.status == "conversation.reply" && message_execution_draft(message).is_some() {
+    if message.status == "conversation.reply"
+        && message_execution_draft(message)
+            .map(|draft| matches!(draft.target_kind, JobTargetKind::Capability))
+            .unwrap_or(false)
+    {
+        "mode-conversation mode-draft-ready mode-capability-draft"
+    } else if message.status == "conversation.reply" && message_execution_draft(message).is_some() {
         "mode-conversation mode-draft-ready"
     } else if message.status == "conversation.reply" {
         "mode-conversation"
@@ -119,7 +138,13 @@ pub(crate) fn message_mode_class(message: &MessageRecord) -> &'static str {
 }
 
 pub(crate) fn message_mode_badge(message: &MessageRecord) -> Option<(&'static str, &'static str)> {
-    if message.status == "conversation.reply" && message_execution_draft(message).is_some() {
+    if message.status == "conversation.reply"
+        && message_execution_draft(message)
+            .map(|draft| matches!(draft.target_kind, JobTargetKind::Capability))
+            .unwrap_or(false)
+    {
+        Some(("conversation", "Capability Draft"))
+    } else if message.status == "conversation.reply" && message_execution_draft(message).is_some() {
         Some(("conversation", "Draft Ready"))
     } else if message.status == "conversation.reply" {
         Some(("conversation", "Conversation"))
@@ -265,9 +290,9 @@ mod tests {
             payload_json: json!({
                 "execution_draft": {
                     "title": "Update README",
-                    "repo_name": "elowen-api",
+                    "target_name": "elowen-api",
                     "base_branch": "main",
-                    "request_text": "Update the README",
+                    "prompt": "Update the README",
                     "execution_intent": "workspace_change",
                     "source_message_id": "m1",
                     "source_role": "assistant",
