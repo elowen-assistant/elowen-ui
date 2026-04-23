@@ -123,14 +123,16 @@ pub(crate) async fn send_thread_chat_message(
     .await
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) async fn dispatch_thread_message(
     thread_id: &str,
     source_message_id: &str,
     title: &str,
     device_id: Option<String>,
-    repo_name: &str,
-    base_branch: &str,
-    request_text: Option<String>,
+    target_kind: JobTargetKind,
+    target_name: Option<String>,
+    base_branch: Option<String>,
+    prompt: Option<String>,
     execution_intent: Option<ExecutionIntent>,
 ) -> Result<JobRecord, String> {
     let response: MessageDispatchResponse = decode_json(
@@ -141,10 +143,11 @@ pub(crate) async fn dispatch_thread_message(
         .json(&DispatchThreadMessageRequest {
             source_message_id: source_message_id.to_string(),
             title: title.to_string(),
-            repo_name: repo_name.to_string(),
-            base_branch: base_branch.to_string(),
+            target_kind,
+            target_name,
+            base_branch,
             device_id,
-            request_text,
+            prompt,
             execution_intent,
         })
         .map_err(|error| error.to_string())?
@@ -158,13 +161,15 @@ pub(crate) async fn dispatch_thread_message(
     Ok(response.job)
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) async fn create_job(
     thread_id: &str,
     title: &str,
     device_id: Option<String>,
-    repo_name: &str,
-    base_branch: &str,
-    request_text: &str,
+    target_kind: JobTargetKind,
+    target_name: Option<String>,
+    base_branch: Option<String>,
+    prompt: &str,
     execution_intent: Option<ExecutionIntent>,
 ) -> Result<JobRecord, String> {
     let detail: JobDetail = decode_json(
@@ -174,9 +179,10 @@ pub(crate) async fn create_job(
         )))
         .json(&CreateJobRequest {
             title: title.to_string(),
-            repo_name: repo_name.to_string(),
-            base_branch: base_branch.to_string(),
-            request_text: request_text.to_string(),
+            target_kind,
+            target_name,
+            base_branch,
+            prompt: prompt.to_string(),
             device_id,
             execution_intent,
         })

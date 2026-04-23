@@ -49,6 +49,14 @@ pub(crate) enum ExecutionIntent {
     ReadOnly,
 }
 
+#[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum JobTargetKind {
+    #[default]
+    Repository,
+    Capability,
+}
+
 #[derive(Clone, Debug, Deserialize, PartialEq)]
 pub(crate) struct DeviceRepository {
     pub(crate) name: String,
@@ -137,9 +145,11 @@ pub(crate) struct SessionActor {
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub(crate) struct ExecutionDraft {
     pub(crate) title: String,
-    pub(crate) repo_name: Option<String>,
-    pub(crate) base_branch: String,
-    pub(crate) request_text: String,
+    #[serde(default)]
+    pub(crate) target_kind: JobTargetKind,
+    pub(crate) target_name: String,
+    pub(crate) base_branch: Option<String>,
+    pub(crate) prompt: String,
     pub(crate) execution_intent: ExecutionIntent,
     pub(crate) source_message_id: String,
     pub(crate) source_role: String,
@@ -159,10 +169,13 @@ pub(crate) struct JobRecord {
     pub(crate) correlation_id: String,
     pub(crate) thread_id: String,
     pub(crate) title: String,
+    #[serde(default)]
+    pub(crate) target_kind: JobTargetKind,
     pub(crate) status: String,
     pub(crate) result: Option<String>,
     pub(crate) failure_class: Option<String>,
-    pub(crate) repo_name: String,
+    pub(crate) repo_name: Option<String>,
+    pub(crate) capability_name: Option<String>,
     pub(crate) device_id: Option<String>,
     pub(crate) branch_name: Option<String>,
     pub(crate) base_branch: Option<String>,
@@ -259,19 +272,21 @@ pub(crate) struct CreateThreadChatRequest {
 pub(crate) struct DispatchThreadMessageRequest {
     pub(crate) source_message_id: String,
     pub(crate) title: String,
-    pub(crate) repo_name: String,
-    pub(crate) base_branch: String,
+    pub(crate) target_kind: JobTargetKind,
+    pub(crate) target_name: Option<String>,
+    pub(crate) base_branch: Option<String>,
     pub(crate) device_id: Option<String>,
-    pub(crate) request_text: Option<String>,
+    pub(crate) prompt: Option<String>,
     pub(crate) execution_intent: Option<ExecutionIntent>,
 }
 
 #[derive(Debug, Serialize)]
 pub(crate) struct CreateJobRequest {
     pub(crate) title: String,
-    pub(crate) repo_name: String,
-    pub(crate) base_branch: String,
-    pub(crate) request_text: String,
+    pub(crate) target_kind: JobTargetKind,
+    pub(crate) target_name: Option<String>,
+    pub(crate) base_branch: Option<String>,
+    pub(crate) prompt: String,
     pub(crate) device_id: Option<String>,
     pub(crate) execution_intent: Option<ExecutionIntent>,
 }
