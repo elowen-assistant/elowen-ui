@@ -767,15 +767,16 @@ function createThreadMessages(
       content:
         "I stayed in conversational mode and prepared a clean dispatch handoff below so you can review it before dispatching.",
       status: "conversation.reply",
-        payload_json: {
-          execution_draft: {
-            title: "Polish chat transcript surfaces",
-            target_name: "elowen-ui",
-            base_branch: "main",
-            prompt:
-              "Tighten the chat transcript, localize timestamps, keep operational result details behind disclosure by default, and preserve the pinned composer behavior.",
-            execution_intent: "workspace_change",
-            source_message_id: "msg-user-5",
+      payload_json: {
+        execution_draft: {
+          title: "Polish chat transcript surfaces",
+          target_kind: "repository",
+          target_name: "elowen-ui",
+          base_branch: "main",
+          prompt:
+            "Tighten the chat transcript, localize timestamps, keep operational result details behind disclosure by default, and preserve the pinned composer behavior.",
+          execution_intent: "workspace_change",
+          source_message_id: "msg-user-5",
           source_role: "user",
           rationale: "Prepared from the latest user request so it can be reviewed before dispatch.",
         },
@@ -806,6 +807,7 @@ function appendChatExchange(session, content) {
     payload_json: {
       execution_draft: {
         title: "Polish transcript timestamps",
+        target_kind: "repository",
         target_name: "elowen-ui",
         base_branch: "main",
         prompt: content,
