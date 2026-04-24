@@ -106,7 +106,7 @@ test("shows created job activity in the thread when the backend only exposes job
 
   await expect(page.getByText("Job Update").first()).toBeVisible();
   await expect(
-    page.getByText("Created job `job-030` for repo `elowen-ui` on device `laptop-edge-01`."),
+    page.getByText("Created job `job-030` for Repository elowen-ui on device `laptop-edge-01`."),
   ).toBeVisible();
   await expect(page.getByText("Elowen is checking for an available edge device now.")).toBeVisible();
 });
@@ -133,15 +133,16 @@ test("shows trust state separately from device freshness in the details panel", 
   await login(page);
 
   await page.getByRole("button", { name: "Show Details" }).click();
+  await page.getByRole("button", { name: "Devices" }).click();
 
   const deviceTrustList = page.getByTestId("device-trust-list");
   await expect(deviceTrustList).toBeVisible();
-  await expect(deviceTrustList.getByText("Laptop Edge")).toBeVisible();
-  await expect(deviceTrustList.getByText("Trusted")).toBeVisible();
-  await expect(deviceTrustList.getByText("Travel Edge")).toBeVisible();
-  await expect(deviceTrustList.getByText("Needs Attention")).toBeVisible();
-  await expect(deviceTrustList.getByText("Retired Edge")).toBeVisible();
-  await expect(deviceTrustList.getByText("Revoked")).toBeVisible();
+  await expect(deviceTrustList.getByRole("heading", { name: "Laptop Edge" })).toBeVisible();
+  await expect(deviceTrustList.getByText("Trusted", { exact: true }).first()).toBeVisible();
+  await expect(deviceTrustList.getByRole("heading", { name: "Travel Edge" })).toBeVisible();
+  await expect(deviceTrustList.getByText("Needs Attention", { exact: true }).first()).toBeVisible();
+  await expect(deviceTrustList.getByRole("heading", { name: "Retired Edge" })).toBeVisible();
+  await expect(deviceTrustList.getByText("Revoked", { exact: true }).first()).toBeVisible();
   await expect(deviceTrustList.getByText(/Seen: 2026-04-15T14:39:00Z/)).toBeVisible();
   await expect(deviceTrustList.getByText(/Trusted: 2026-04-15T13:55:00Z/)).toBeVisible();
 });
@@ -150,13 +151,13 @@ test("updates the manual dispatch trust guidance when choosing a different edge"
   await login(page);
 
   await page.getByRole("button", { name: "Show Details" }).click();
-  await page.getByText("Advanced Manual Job").click();
+  await page.getByRole("button", { name: "Manual Job" }).click();
 
   const trustCard = page.getByTestId("manual-job-device-trust");
   await expect(trustCard).toContainText("Laptop Edge");
   await expect(trustCard).toContainText("Trusted");
 
-  const manualJobPanel = page.locator("details").filter({ hasText: "Advanced Manual Job" });
+  const manualJobPanel = page.getByTestId("context-tab-manual");
   await manualJobPanel.locator("select").first().selectOption("travel-edge-02");
 
   await expect(trustCard).toContainText("Travel Edge");
