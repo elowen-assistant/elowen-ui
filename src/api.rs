@@ -69,6 +69,32 @@ pub(crate) async fn fetch_devices() -> Result<Vec<DeviceRecord>, String> {
     .await
 }
 
+pub(crate) async fn fetch_device_trust_events(
+    device_id: &str,
+) -> Result<Vec<DeviceTrustEventRecord>, String> {
+    decode_json(
+        with_credentials(Request::get(&format!(
+            "{}/devices/{device_id}/trust/events",
+            api_base()
+        )))
+        .send()
+        .await
+        .map_err(|error| error.to_string())?,
+    )
+    .await
+}
+
+pub(crate) async fn fetch_orchestrator_signers()
+-> Result<Vec<OrchestratorSignerStateRecord>, String> {
+    decode_json(
+        with_credentials(Request::get(&format!("{}/trust/signers", api_base())))
+            .send()
+            .await
+            .map_err(|error| error.to_string())?,
+    )
+    .await
+}
+
 pub(crate) async fn fetch_thread(thread_id: &str) -> Result<ThreadDetail, String> {
     decode_json(
         with_credentials(Request::get(&format!("{}/threads/{thread_id}", api_base())))
@@ -240,6 +266,66 @@ pub(crate) async fn resolve_approval(
     .await
 }
 
+pub(crate) async fn revoke_device_trust(
+    device_id: &str,
+    reason: Option<String>,
+) -> Result<DeviceRecord, String> {
+    decode_json(
+        with_credentials(Request::post(&format!(
+            "{}/devices/{device_id}/trust/revoke",
+            api_base()
+        )))
+        .json(&TrustLifecycleActionRequest { reason })
+        .map_err(|error| error.to_string())?
+        .send()
+        .await
+        .map_err(|error| error.to_string())?,
+    )
+    .await
+}
+
+pub(crate) async fn confirm_device_trust_rotation(
+    device_id: &str,
+    reason: Option<String>,
+) -> Result<DeviceRecord, String> {
+    device_trust_action(device_id, "confirm-rotation", reason).await
+}
+
+pub(crate) async fn resolve_device_trust_attention(
+    device_id: &str,
+    reason: Option<String>,
+) -> Result<DeviceRecord, String> {
+    device_trust_action(device_id, "resolve-attention", reason).await
+}
+
+pub(crate) async fn clear_device_trust_revocation(
+    device_id: &str,
+    reason: Option<String>,
+) -> Result<DeviceRecord, String> {
+    device_trust_action(device_id, "clear-revocation", reason).await
+}
+
+pub(crate) async fn stage_orchestrator_signer(
+    key_id: &str,
+    reason: Option<String>,
+) -> Result<OrchestratorSignerStateRecord, String> {
+    signer_action(key_id, "stage", reason).await
+}
+
+pub(crate) async fn activate_orchestrator_signer(
+    key_id: &str,
+    reason: Option<String>,
+) -> Result<OrchestratorSignerStateRecord, String> {
+    signer_action(key_id, "activate", reason).await
+}
+
+pub(crate) async fn retire_orchestrator_signer(
+    key_id: &str,
+    reason: Option<String>,
+) -> Result<OrchestratorSignerStateRecord, String> {
+    signer_action(key_id, "retire", reason).await
+}
+
 pub(crate) async fn fetch_auth_session() -> Result<AuthSessionStatus, String> {
     decode_json(
         with_credentials(Request::get(&auth_url("session")))
@@ -294,4 +380,42 @@ where
     }
 
     serde_json::from_str::<T>(&body).map_err(|error| error.to_string())
+}
+
+async fn device_trust_action(
+    device_id: &str,
+    action: &str,
+    reason: Option<String>,
+) -> Result<DeviceRecord, String> {
+    decode_json(
+        with_credentials(Request::post(&format!(
+            "{}/devices/{device_id}/trust/{action}",
+            api_base()
+        )))
+        .json(&TrustLifecycleActionRequest { reason })
+        .map_err(|error| error.to_string())?
+        .send()
+        .await
+        .map_err(|error| error.to_string())?,
+    )
+    .await
+}
+
+async fn signer_action(
+    key_id: &str,
+    action: &str,
+    reason: Option<String>,
+) -> Result<OrchestratorSignerStateRecord, String> {
+    decode_json(
+        with_credentials(Request::post(&format!(
+            "{}/trust/signers/{key_id}/{action}",
+            api_base()
+        )))
+        .json(&TrustLifecycleActionRequest { reason })
+        .map_err(|error| error.to_string())?
+        .send()
+        .await
+        .map_err(|error| error.to_string())?,
+    )
+    .await
 }

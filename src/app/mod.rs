@@ -17,9 +17,12 @@ use web_sys::EventSource;
 
 use crate::{
     api::{
+        activate_orchestrator_signer, clear_device_trust_revocation, confirm_device_trust_rotation,
         create_job, create_thread, dispatch_thread_message, fetch_auth_session,
-        login as login_session, logout as logout_session, promote_job_note, resolve_approval,
-        send_thread_chat_message,
+        fetch_device_trust_events, fetch_orchestrator_signers, login as login_session,
+        logout as logout_session, promote_job_note, resolve_approval,
+        resolve_device_trust_attention, retire_orchestrator_signer, revoke_device_trust,
+        send_thread_chat_message, stage_orchestrator_signer,
     },
     format::{
         approval_status_note, execution_intent_label, format_json_value, format_string_list,
@@ -167,9 +170,15 @@ fn device_requires_trust_attention(device: &DeviceRecord) -> bool {
     device.trust.requires_attention
         || matches!(
             device_trust_status_key(&device.trust),
-            "revoked" | "untrusted" | "attention_needed" | "needs_attention"
+            "rotated" | "revoked" | "untrusted" | "attention_needed" | "needs_attention"
         )
         || matches!(device.trust.can_dispatch, Some(false))
+}
+
+fn device_can_dispatch(device: &DeviceRecord) -> bool {
+    device.trust.can_dispatch.unwrap_or(false)
+        && !device_requires_trust_attention(device)
+        && device_trust_status_key(&device.trust) == "trusted"
 }
 
 fn device_trust_summary(device: &DeviceRecord) -> String {
@@ -260,8 +269,20 @@ fn device_option_label(device: &DeviceRecord) -> String {
 
     segments.push(device_enrollment_label(device));
     segments.push(device_trust_status_label(&device.trust));
+    if !device_can_dispatch(device) {
+        segments.push("Dispatch blocked".to_string());
+    }
 
     segments.join(" · ")
+}
+
+fn short_fingerprint(value: &str) -> String {
+    let trimmed = value.trim();
+    if trimmed.len() <= 16 {
+        trimmed.to_string()
+    } else {
+        format!("{}...{}", &trimmed[..8], &trimmed[trimmed.len() - 8..])
+    }
 }
 
 fn device_trust_card(
@@ -275,7 +296,28 @@ fn device_trust_card(
             let trust_class = device_trust_status_class(&device.trust);
             let enrollment_label = device_enrollment_label(&device);
             let summary = device_trust_summary(&device);
-            let timestamps = device_trust_timestamps(&device);
+            let mut metadata = Vec::new();
+            if let Some(key) = device.trust.current_edge_public_key.as_deref() {
+                metadata.push(("Edge key".to_string(), short_fingerprint(key)));
+            }
+            if let Some(key_id) = device.trust.last_orchestrator_key_id.as_deref() {
+                metadata.push(("Orchestrator signer".to_string(), key_id.to_string()));
+            } else if let Some(key) = device.trust.last_orchestrator_public_key.as_deref() {
+                metadata.push(("Orchestrator signer".to_string(), short_fingerprint(key)));
+            }
+            if !device.trust.previous_edge_public_keys.is_empty() {
+                metadata.push((
+                    "Previous keys".to_string(),
+                    device.trust.previous_edge_public_keys.len().to_string(),
+                ));
+            }
+            if !device.trust.revoked_edge_public_keys.is_empty() {
+                metadata.push((
+                    "Revoked keys".to_string(),
+                    device.trust.revoked_edge_public_keys.len().to_string(),
+                ));
+            }
+            metadata.extend(device_trust_timestamps(&device));
             let trust_attention = device_requires_trust_attention(&device);
             let dispatch_note = match device.trust.can_dispatch {
                 Some(false) => Some("Dispatch should stay blocked until this trust issue is resolved.".to_string()),
@@ -303,7 +345,7 @@ fn device_trust_card(
                     <p class="device-trust-summary">{summary}</p>
                     <div class="device-trust-meta">
                         <For
-                            each=move || timestamps.clone()
+                            each=move || metadata.clone()
                             key=|(label, _)| label.clone()
                             children=move |(label, value)| {
                                 view! {
@@ -714,6 +756,8 @@ pub fn App() -> impl IntoView {
     let (jobs, set_jobs) = signal(Vec::<JobRecord>::new());
     let (devices, set_devices) = signal(Vec::<DeviceRecord>::new());
     let (_repositories, set_repositories) = signal(Vec::<RepositoryOption>::new());
+    let (trust_events, set_trust_events) = signal(Vec::<DeviceTrustEventRecord>::new());
+    let (signer_states, set_signer_states) = signal(Vec::<OrchestratorSignerStateRecord>::new());
     let (sidebar_open, set_sidebar_open) = signal(false);
     let (context_open, set_context_open) =
         signal(read_bool_storage(STORAGE_CONTEXT_OPEN).unwrap_or(false));
@@ -813,6 +857,7 @@ pub fn App() -> impl IntoView {
             Ok(session) => {
                 let can_access = session_can_access(&session);
                 let can_operate = session_can_operate(&session);
+                let can_admin = session_can_admin(&session);
                 set_auth_session.set(Some(session));
                 if can_access {
                     if let Err(error) = sync_thread_list(
@@ -839,6 +884,14 @@ pub fn App() -> impl IntoView {
                         set_status_text.set(format!("Failed to load repositories: {error}"));
                     }
 
+                    if can_admin {
+                        match fetch_orchestrator_signers().await {
+                            Ok(signers) => set_signer_states.set(signers),
+                            Err(error) => set_status_text
+                                .set(format!("Failed to load trust signers: {error}")),
+                        }
+                    }
+
                     if let Some(thread_id) = selected_thread_id.get_untracked()
                         && let Err(error) =
                             sync_selected_thread(thread_id, set_selected_thread, set_status_text)
@@ -849,6 +902,8 @@ pub fn App() -> impl IntoView {
                 } else {
                     set_devices.set(Vec::new());
                     set_repositories.set(Vec::new());
+                    set_signer_states.set(Vec::new());
+                    set_trust_events.set(Vec::new());
                     set_status_text.set("Sign in required.".to_string());
                 }
             }
@@ -2259,7 +2314,7 @@ pub fn App() -> impl IntoView {
                                                                                                                 children=move |device| {
                                                                                                                     let label = device_option_label(&device);
                                                                                                                     view! {
-                                                                                                                        <option value=device.id.clone()>{label}</option>
+                                                                                                                        <option value=device.id.clone() disabled=!device_can_dispatch(&device)>{label}</option>
                                                                                                                     }
                                                                                                                 }
                                                                                                             />
@@ -2935,7 +2990,127 @@ pub fn App() -> impl IntoView {
                                                                     each=move || devices.get()
                                                                     key=|device| device.id.clone()
                                                                     children=move |device| {
-                                                                        device_trust_card(Some(device), false, None)
+                                                                        let device_id = device.id.clone();
+                                                                        let status_key = device_trust_status_key(&device.trust).to_string();
+                                                                        let is_revoked = status_key == "revoked";
+                                                                        let is_rotated = status_key == "rotated";
+                                                                        let is_attention = status_key == "needs_attention" || status_key == "attention_needed";
+                                                                        let can_admin = auth_session
+                                                                            .get()
+                                                                            .as_ref()
+                                                                            .is_some_and(session_can_admin);
+                                                                        view! {
+                                                                            <article>
+                                                                                {device_trust_card(Some(device.clone()), false, None)}
+                                                                                {if can_admin {
+                                                                                    let history_device_id = device_id.clone();
+                                                                                    let revoke_device_id = device_id.clone();
+                                                                                    let confirm_device_id = device_id.clone();
+                                                                                    let resolve_device_id = device_id.clone();
+                                                                                    let clear_device_id = device_id.clone();
+                                                                                    view! {
+                                                                                        <div class="device-trust-actions">
+                                                                                            <button
+                                                                                                type="button"
+                                                                                                on:click=move |_| {
+                                                                                                    let device_id = history_device_id.clone();
+                                                                                                    spawn_local(async move {
+                                                                                                        match fetch_device_trust_events(&device_id).await {
+                                                                                                            Ok(events) => set_trust_events.set(events),
+                                                                                                            Err(error) => set_status_text.set(format!("Failed to load trust history: {error}")),
+                                                                                                        }
+                                                                                                    });
+                                                                                                }
+                                                                                            >
+                                                                                                "History"
+                                                                                            </button>
+                                                                                            <button
+                                                                                                type="button"
+                                                                                                disabled=move || is_revoked
+                                                                                                on:click=move |_| {
+                                                                                                    let device_id = revoke_device_id.clone();
+                                                                                                    spawn_local(async move {
+                                                                                                        match revoke_device_trust(&device_id, Some("Revoked from admin UI".to_string())).await {
+                                                                                                            Ok(_) => {
+                                                                                                                let _ = sync_device_list(set_devices).await;
+                                                                                                                if let Ok(events) = fetch_device_trust_events(&device_id).await {
+                                                                                                                    set_trust_events.set(events);
+                                                                                                                }
+                                                                                                            }
+                                                                                                            Err(error) => set_status_text.set(format!("Failed to revoke trust: {error}")),
+                                                                                                        }
+                                                                                                    });
+                                                                                                }
+                                                                                            >
+                                                                                                "Revoke"
+                                                                                            </button>
+                                                                                            <button
+                                                                                                type="button"
+                                                                                                disabled=move || !is_rotated
+                                                                                                on:click=move |_| {
+                                                                                                    let device_id = confirm_device_id.clone();
+                                                                                                    spawn_local(async move {
+                                                                                                        match confirm_device_trust_rotation(&device_id, Some("Rotation confirmed from admin UI".to_string())).await {
+                                                                                                            Ok(_) => {
+                                                                                                                let _ = sync_device_list(set_devices).await;
+                                                                                                                if let Ok(events) = fetch_device_trust_events(&device_id).await {
+                                                                                                                    set_trust_events.set(events);
+                                                                                                                }
+                                                                                                            }
+                                                                                                            Err(error) => set_status_text.set(format!("Failed to confirm rotation: {error}")),
+                                                                                                        }
+                                                                                                    });
+                                                                                                }
+                                                                                            >
+                                                                                                "Confirm Rotation"
+                                                                                            </button>
+                                                                                            <button
+                                                                                                type="button"
+                                                                                                disabled=move || !is_attention
+                                                                                                on:click=move |_| {
+                                                                                                    let device_id = resolve_device_id.clone();
+                                                                                                    spawn_local(async move {
+                                                                                                        match resolve_device_trust_attention(&device_id, Some("Attention resolved from admin UI".to_string())).await {
+                                                                                                            Ok(_) => {
+                                                                                                                let _ = sync_device_list(set_devices).await;
+                                                                                                                if let Ok(events) = fetch_device_trust_events(&device_id).await {
+                                                                                                                    set_trust_events.set(events);
+                                                                                                                }
+                                                                                                            }
+                                                                                                            Err(error) => set_status_text.set(format!("Failed to resolve attention: {error}")),
+                                                                                                        }
+                                                                                                    });
+                                                                                                }
+                                                                                            >
+                                                                                                "Resolve"
+                                                                                            </button>
+                                                                                            <button
+                                                                                                type="button"
+                                                                                                disabled=move || !is_revoked
+                                                                                                on:click=move |_| {
+                                                                                                    let device_id = clear_device_id.clone();
+                                                                                                    spawn_local(async move {
+                                                                                                        match clear_device_trust_revocation(&device_id, Some("Revocation cleared from admin UI".to_string())).await {
+                                                                                                            Ok(_) => {
+                                                                                                                let _ = sync_device_list(set_devices).await;
+                                                                                                                if let Ok(events) = fetch_device_trust_events(&device_id).await {
+                                                                                                                    set_trust_events.set(events);
+                                                                                                                }
+                                                                                                            }
+                                                                                                            Err(error) => set_status_text.set(format!("Failed to clear revocation: {error}")),
+                                                                                                        }
+                                                                                                    });
+                                                                                                }
+                                                                                            >
+                                                                                                "Clear Revocation"
+                                                                                            </button>
+                                                                                        </div>
+                                                                                    }.into_any()
+                                                                                } else {
+                                                                                    ().into_any()
+                                                                                }}
+                                                                            </article>
+                                                                        }
                                                                     }
                                                                 />
                                                                 {move || {
@@ -2952,6 +3127,130 @@ pub fn App() -> impl IntoView {
                                                                     }
                                                                 }}
                                                             </div>
+                                                            {move || {
+                                                                if auth_session.get().as_ref().is_some_and(session_can_admin) {
+                                                                    view! {
+                                                                        <section class="device-trust-admin">
+                                                                            <div class="job-browser-header">
+                                                                                <div>
+                                                                                    <p class="eyebrow">"Signer Lifecycle"</p>
+                                                                                    <h3>"Orchestrator signers"</h3>
+                                                                                </div>
+                                                                                <button
+                                                                                    type="button"
+                                                                                    on:click=move |_| {
+                                                                                        spawn_local(async move {
+                                                                                            match fetch_orchestrator_signers().await {
+                                                                                                Ok(signers) => set_signer_states.set(signers),
+                                                                                                Err(error) => set_status_text.set(format!("Failed to refresh signers: {error}")),
+                                                                                            }
+                                                                                        });
+                                                                                    }
+                                                                                >
+                                                                                    "Refresh"
+                                                                                </button>
+                                                                            </div>
+                                                                            <div class="device-trust-list">
+                                                                                <For
+                                                                                    each=move || signer_states.get()
+                                                                                    key=|signer| signer.key_id.clone()
+                                                                                    children=move |signer| {
+                                                                                        let stage_key = signer.key_id.clone();
+                                                                                        let activate_key = signer.key_id.clone();
+                                                                                        let retire_key = signer.key_id.clone();
+                                                                                        let signer_is_staged = signer.status == "staged";
+                                                                                        let signer_is_active = signer.status == "active";
+                                                                                        let signer_is_retired = signer.status == "retired";
+                                                                                        view! {
+                                                                                            <article class="device-trust-card">
+                                                                                                <header>
+                                                                                                    <div>
+                                                                                                        <p class="eyebrow">{signer.status.clone()}</p>
+                                                                                                        <h3>{signer.key_id.clone()}</h3>
+                                                                                                    </div>
+                                                                                                    <span class=format!("trust-badge {}", if signer.active { "trusted" } else { "unreported" })>
+                                                                                                        {if signer.active { "Active" } else { "Configured" }}
+                                                                                                    </span>
+                                                                                                </header>
+                                                                                                <p class="device-trust-summary">{format!("Public key fingerprint: {}", short_fingerprint(&signer.public_key))}</p>
+                                                                                                <div class="device-trust-actions">
+                                                                                                    <button
+                                                                                                        type="button"
+                                                                                                        disabled=move || signer_is_staged
+                                                                                                        on:click=move |_| {
+                                                                                                            let key_id = stage_key.clone();
+                                                                                                            spawn_local(async move {
+                                                                                                                match stage_orchestrator_signer(&key_id, Some("Staged from admin UI".to_string())).await {
+                                                                                                                    Ok(_) => if let Ok(signers) = fetch_orchestrator_signers().await { set_signer_states.set(signers); },
+                                                                                                                    Err(error) => set_status_text.set(format!("Failed to stage signer: {error}")),
+                                                                                                                }
+                                                                                                            });
+                                                                                                        }
+                                                                                                    >
+                                                                                                        "Stage"
+                                                                                                    </button>
+                                                                                                    <button
+                                                                                                        type="button"
+                                                                                                        disabled=move || signer_is_active
+                                                                                                        on:click=move |_| {
+                                                                                                            let key_id = activate_key.clone();
+                                                                                                            spawn_local(async move {
+                                                                                                                match activate_orchestrator_signer(&key_id, Some("Activated from admin UI".to_string())).await {
+                                                                                                                    Ok(_) => if let Ok(signers) = fetch_orchestrator_signers().await { set_signer_states.set(signers); },
+                                                                                                                    Err(error) => set_status_text.set(format!("Failed to activate signer: {error}")),
+                                                                                                                }
+                                                                                                            });
+                                                                                                        }
+                                                                                                    >
+                                                                                                        "Activate"
+                                                                                                    </button>
+                                                                                                    <button
+                                                                                                        type="button"
+                                                                                                        disabled=move || signer_is_retired
+                                                                                                        on:click=move |_| {
+                                                                                                            let key_id = retire_key.clone();
+                                                                                                            spawn_local(async move {
+                                                                                                                match retire_orchestrator_signer(&key_id, Some("Retired from admin UI".to_string())).await {
+                                                                                                                    Ok(_) => if let Ok(signers) = fetch_orchestrator_signers().await { set_signer_states.set(signers); },
+                                                                                                                    Err(error) => set_status_text.set(format!("Failed to retire signer: {error}")),
+                                                                                                                }
+                                                                                                            });
+                                                                                                        }
+                                                                                                    >
+                                                                                                        "Retire"
+                                                                                                    </button>
+                                                                                                </div>
+                                                                                            </article>
+                                                                                        }
+                                                                                    }
+                                                                                />
+                                                                            </div>
+                                                                            <div class="device-trust-list" data-testid="device-trust-events">
+                                                                                <For
+                                                                                    each=move || trust_events.get()
+                                                                                    key=|event| event.id.clone()
+                                                                                    children=move |event| {
+                                                                                        view! {
+                                                                                            <article class="device-trust-card compact">
+                                                                                                <p class="eyebrow">{event.event_type.clone()}</p>
+                                                                                                <h3>{format!("{} -> {}", event.previous_status.clone().unwrap_or_else(|| "n/a".to_string()), event.next_status.clone().unwrap_or_else(|| "n/a".to_string()))}</h3>
+                                                                                                <p class="device-trust-summary">{event.reason.clone().unwrap_or_else(|| "No reason recorded".to_string())}</p>
+                                                                                                <div class="device-trust-meta">
+                                                                                                    <span>{format!("Device: {}", event.device_id)}</span>
+                                                                                                    <span>{format!("At: {}", event.created_at)}</span>
+                                                                                                    <span>{format!("Actor: {}", event.actor_display_name.unwrap_or_else(|| "system".to_string()))}</span>
+                                                                                                </div>
+                                                                                            </article>
+                                                                                        }
+                                                                                    }
+                                                                                />
+                                                                            </div>
+                                                                        </section>
+                                                                    }.into_any()
+                                                                } else {
+                                                                    ().into_any()
+                                                                }
+                                                            }}
                                                         </div>
                                                     </section>
                                                         }.into_any()
@@ -3409,7 +3708,7 @@ pub fn App() -> impl IntoView {
                                                                         children=move |device| {
                                                                             let label = device_option_label(&device);
                                                                             view! {
-                                                                                <option value=device.id.clone()>{label}</option>
+                                                                                <option value=device.id.clone() disabled=!device_can_dispatch(&device)>{label}</option>
                                                                             }
                                                                         }
                                                                     />
@@ -3543,10 +3842,15 @@ mod tests {
                 detail: None,
                 reason: None,
                 enrollment_kind: Some("re_enrollment".into()),
+                current_edge_public_key: Some("edge-public-key".into()),
+                previous_edge_public_keys: Vec::new(),
+                revoked_edge_public_keys: Vec::new(),
                 last_trusted_registration_at: Some("2026-04-14T16:20:00Z".into()),
                 rotated_at: Some("2026-04-15T09:10:00Z".into()),
                 revoked_at: None,
                 updated_at: Some("2026-04-15T14:32:00Z".into()),
+                last_orchestrator_key_id: Some("orchestrator-1".into()),
+                last_orchestrator_public_key: Some("orchestrator-public-key".into()),
                 can_dispatch: Some(false),
                 requires_attention: true,
             },
@@ -3565,7 +3869,7 @@ mod tests {
         assert_eq!(device_trust_status_label(&device.trust), "Needs Attention");
         assert_eq!(
             device_option_label(&device),
-            "Travel Edge (travel-edge-02) · Re-enrollment · Needs Attention"
+            "Travel Edge (travel-edge-02) · Re-enrollment · Needs Attention · Dispatch blocked"
         );
     }
 
