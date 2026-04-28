@@ -115,6 +115,19 @@ pub(crate) async fn fetch_job(job_id: &str) -> Result<JobDetail, String> {
     .await
 }
 
+pub(crate) async fn retry_job(job_id: &str) -> Result<JobDetail, String> {
+    decode_json(
+        with_credentials(Request::post(&format!(
+            "{}/jobs/{job_id}/retry",
+            api_base()
+        )))
+        .send()
+        .await
+        .map_err(|error| error.to_string())?,
+    )
+    .await
+}
+
 pub(crate) async fn create_thread(title: &str) -> Result<ThreadDetail, String> {
     decode_json(
         with_credentials(Request::post(&format!("{}/threads", api_base())))

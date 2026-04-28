@@ -164,6 +164,16 @@ async function handleApiRequest(req, res, pathname) {
     return;
   }
 
+  if (pathname === "/api/v1/trust/signers" && req.method === "GET") {
+    if (!canAdmin(session)) {
+      writeJson(res, 403, { error: "the signed-in account is not allowed to perform this action" });
+      return;
+    }
+
+    writeJson(res, 200, session.state.signers);
+    return;
+  }
+
   if (pathname === `/api/v1/threads/${session.state.thread.id}` && req.method === "GET") {
     writeJson(res, 200, session.state.thread);
     return;
@@ -184,6 +194,57 @@ async function handleApiRequest(req, res, pathname) {
   }
 
   if (pathname === `/api/v1/jobs/${session.state.job.id}` && req.method === "GET") {
+    writeJson(res, 200, session.state.job);
+    return;
+  }
+
+  if (pathname === `/api/v1/jobs/${session.state.job.id}/retry` && req.method === "POST") {
+    session.state.job = {
+      ...session.state.job,
+      status: "dispatched",
+      result: null,
+      failure_class: null,
+      completed_at: null,
+      updated_at: "2026-04-15T15:12:00Z",
+      events: [
+        ...session.state.job.events,
+        {
+          id: "evt-job-retry",
+          job_id: session.state.job.id,
+          correlation_id: session.state.job.correlation_id,
+          event_type: "job.retry_requested",
+          payload_json: {
+            correlation_id: session.state.job.correlation_id,
+            device_id: session.state.job.device_id,
+          },
+          created_at: "2026-04-15T15:12:00Z",
+        },
+        {
+          id: "evt-job-retry-dispatched",
+          job_id: session.state.job.id,
+          correlation_id: session.state.job.correlation_id,
+          event_type: "job.dispatched",
+          payload_json: {
+            correlation_id: session.state.job.correlation_id,
+            device_id: session.state.job.device_id,
+          },
+          created_at: "2026-04-15T15:12:01Z",
+        },
+      ],
+    };
+    session.state.jobs = [structuredClone(session.state.job)];
+    session.state.thread = {
+      ...session.state.thread,
+      jobs: [structuredClone(session.state.job)],
+      updated_at: session.state.job.updated_at,
+    };
+    broadcastEvent(session, {
+      event_type: "job.changed",
+      thread_id: session.state.thread.id,
+      job_id: session.state.job.id,
+      device_id: session.state.job.device_id,
+      created_at: session.state.job.updated_at,
+    });
     writeJson(res, 200, session.state.job);
     return;
   }
@@ -407,6 +468,14 @@ function credentialsToScenario(username, password) {
     };
   }
 
+  if (normalizedUsername === "admin" && password === "slice43-edge-unavailable") {
+    return {
+      scenario: "edge-unavailable",
+      actor: actor("admin", "Retry Admin", "admin"),
+      authMode: "local_accounts",
+    };
+  }
+
   if (normalizedUsername === "admin" && password === "slice31-draft") {
     return {
       scenario: "draft",
@@ -454,15 +523,16 @@ function createSession({ scenario, actor, authMode }) {
   const now = "2026-04-15T14:40:00Z";
   const isCreatedOnly = scenario === "created-only";
   const isDraft = scenario === "draft";
+  const isEdgeUnavailable = scenario === "edge-unavailable";
   const jobRecord = {
     id: isDraft ? "job-slice-31" : "job-slice-30",
     short_id: isDraft ? "job-031" : "job-030",
     correlation_id: isDraft ? "corr-slice-31" : "corr-slice-30",
     thread_id: isDraft ? "thread-slice-31" : "thread-slice-30",
     title: isDraft ? "Chat surface polish" : "Browser automation rollout",
-    status: isCreatedOnly ? "probing" : isDraft ? "awaiting_approval" : "running",
-    result: isDraft ? "success" : null,
-    failure_class: null,
+    status: isEdgeUnavailable ? "failed" : isCreatedOnly ? "probing" : isDraft ? "awaiting_approval" : "running",
+    result: isEdgeUnavailable ? "failure" : isDraft ? "success" : null,
+    failure_class: isEdgeUnavailable ? "edge_unavailable" : null,
     repo_name: "elowen-ui",
     device_id: "laptop-edge-01",
     branch_name: isDraft
@@ -605,6 +675,22 @@ function createSession({ scenario, actor, authMode }) {
         updated_at: now,
       },
     ],
+    signers: [
+      {
+        key_id: "orchestrator-1-testkey",
+        public_key: "test-public-key",
+        status: "active",
+        active: true,
+        actor_username: "admin",
+        actor_display_name: "Playwright Admin",
+        actor_role: "admin",
+        reason: "test fixture",
+        staged_at: null,
+        activated_at: "2026-04-15T12:00:00Z",
+        retired_at: null,
+        updated_at: now,
+      },
+    ],
     job: {
       ...structuredClone(jobRecord),
       execution_report_json: isCreatedOnly
@@ -649,7 +735,37 @@ function createSession({ scenario, actor, authMode }) {
           },
       approvals: [],
       related_notes: [],
-      events: isCreatedOnly
+      events: isEdgeUnavailable
+        ? [
+            {
+              id: "evt-job-created",
+              correlation_id: "corr-slice-30",
+              event_type: "job.created",
+              payload_json: {
+                target_kind: "repository",
+                target_name: "elowen-ui",
+                repo_name: "elowen-ui",
+                device_id: "laptop-edge-01",
+                branch_name: "slice/30-ui-browser-automation",
+                base_branch: "main",
+                prompt: "Check whether any edge agents are currently available.",
+                execution_intent: "workspace_change",
+              },
+              created_at: "2026-04-15T14:10:00Z",
+            },
+            {
+              id: "evt-job-failed",
+              correlation_id: "corr-slice-30",
+              event_type: "job.failed",
+              payload_json: {
+                correlation_id: "corr-slice-30",
+                failure_class: "edge_unavailable",
+                reason: "No edge client was available to accept the job. Use Retry when an edge is online.",
+              },
+              created_at: now,
+            },
+          ]
+        : isCreatedOnly
         ? [
             {
               id: "evt-job-created",

@@ -8,7 +8,6 @@ mod state;
 mod storage;
 mod threads;
 
-use gloo_timers::future::TimeoutFuture;
 use leptos::{ev, html, prelude::*, task::spawn_local};
 use serde_json::{Value, json};
 use std::collections::{HashMap, HashSet};
@@ -21,7 +20,7 @@ use crate::{
         create_job, create_thread, dispatch_thread_message, fetch_auth_session,
         fetch_device_trust_events, fetch_orchestrator_signers, login as login_session,
         logout as logout_session, promote_job_note, resolve_approval,
-        resolve_device_trust_attention, retire_orchestrator_signer, revoke_device_trust,
+        resolve_device_trust_attention, retire_orchestrator_signer, retry_job, revoke_device_trust,
         send_thread_chat_message, stage_orchestrator_signer,
     },
     format::{
@@ -42,14 +41,12 @@ use self::{
     jobs::{job_count_label, short_thread_label},
     layout::{default_workspace_subtitle, default_workspace_title},
     realtime::{
-        connect_ui_event_stream, is_auth_error, stop_realtime_updates, sync_device_list,
-        sync_job_list, sync_repository_list, sync_selected_job, sync_selected_thread,
-        sync_thread_list,
+        connect_ui_event_stream, stop_realtime_updates, sync_device_list, sync_job_list,
+        sync_repository_list, sync_selected_job, sync_selected_thread, sync_thread_list,
     },
     state::{
-        NavMode, POLL_FALLBACK_MS, RealtimeRuntime, RealtimeStatus, STORAGE_COMPOSER_TEXT,
-        STORAGE_CONTEXT_OPEN, STORAGE_NAV_MODE, STORAGE_SELECTED_JOB_ID,
-        STORAGE_SELECTED_THREAD_ID, UiEventSyncHandles,
+        NavMode, RealtimeRuntime, RealtimeStatus, STORAGE_COMPOSER_TEXT, STORAGE_CONTEXT_OPEN,
+        STORAGE_NAV_MODE, STORAGE_SELECTED_JOB_ID, STORAGE_SELECTED_THREAD_ID, UiEventSyncHandles,
     },
     storage::{read_bool_storage, read_storage, write_optional_storage, write_storage},
     threads::thread_message_count_label,
@@ -103,16 +100,6 @@ fn auth_role_label(role: &AuthRole) -> &'static str {
 
 fn actor_chip_label(actor: &SessionActor) -> String {
     format!("{} · {}", actor.display_name, auth_role_label(&actor.role))
-}
-
-fn unauthenticated_session(mode: AuthMode) -> AuthSessionStatus {
-    AuthSessionStatus {
-        enabled: true,
-        auth_mode: mode,
-        authenticated: false,
-        actor: None,
-        permissions: Vec::new(),
-    }
 }
 
 fn device_option_exists(devices: &[DeviceRecord], device_id: &str) -> bool {
@@ -612,7 +599,9 @@ fn synthetic_job_created_message(
         .filter(|value| !value.is_empty());
     let status_note = match job.status.as_str() {
         "probing" => "Elowen is checking for an available edge device now.",
-        "pending" => "The job is queued and waiting to be dispatched.",
+        "pending" => {
+            "This legacy job is waiting to be dispatched. Retry it when an edge is online."
+        }
         "dispatched" => "The job has been dispatched to an edge device.",
         "accepted" => "An edge device accepted the job and is preparing to run it.",
         "running" => "The job is now running.",
@@ -660,6 +649,10 @@ fn synthetic_job_created_message(
         }),
         created_at,
     })
+}
+
+fn job_can_retry(job: &JobRecord) -> bool {
+    matches!(job.status.as_str(), "failed" | "pending")
 }
 
 fn synthetic_job_event_message(
@@ -911,258 +904,6 @@ pub fn App() -> impl IntoView {
                 set_status_text.set(format!("Failed to check auth session: {error}"));
             }
         }
-
-        loop {
-            TimeoutFuture::new(POLL_FALLBACK_MS).await;
-
-            let can_access = auth_session
-                .get_untracked()
-                .map(|session| session_can_access(&session))
-                .unwrap_or(false);
-
-            if !can_access {
-                continue;
-            }
-
-            if let Err(error) = sync_thread_list(
-                set_threads,
-                selected_thread_id,
-                set_selected_thread_id,
-                set_status_text,
-            )
-            .await
-            {
-                if is_auth_error(&error) {
-                    stop_realtime_updates(
-                        UiEventSyncHandles {
-                            selected_thread_id,
-                            selected_job_id,
-                            event_source,
-                            set_threads,
-                            set_selected_thread_id,
-                            set_selected_thread,
-                            set_jobs,
-                            set_devices,
-                            set_repositories,
-                            set_selected_job_id,
-                            set_selected_job_detail,
-                            set_auth_session,
-                            set_status_text,
-                            set_realtime_status,
-                            set_event_source,
-                            runtime: realtime_runtime.get_value(),
-                        },
-                        RealtimeStatus::Disconnected,
-                    );
-                    let auth_mode = auth_session
-                        .get_untracked()
-                        .map(|session| session.auth_mode)
-                        .unwrap_or(AuthMode::LocalAccounts);
-                    set_auth_session.set(Some(unauthenticated_session(auth_mode)));
-                    set_selected_thread.set(None);
-                    set_selected_job_detail.set(None);
-                    set_selected_job_id.set(None);
-                    set_status_text.set("Session expired. Sign in again.".to_string());
-                    continue;
-                }
-                set_status_text.set(format!("Failed to poll threads: {error}"));
-            }
-
-            if let Err(error) = sync_job_list(set_jobs).await {
-                if is_auth_error(&error) {
-                    stop_realtime_updates(
-                        UiEventSyncHandles {
-                            selected_thread_id,
-                            selected_job_id,
-                            event_source,
-                            set_threads,
-                            set_selected_thread_id,
-                            set_selected_thread,
-                            set_jobs,
-                            set_devices,
-                            set_repositories,
-                            set_selected_job_id,
-                            set_selected_job_detail,
-                            set_auth_session,
-                            set_status_text,
-                            set_realtime_status,
-                            set_event_source,
-                            runtime: realtime_runtime.get_value(),
-                        },
-                        RealtimeStatus::Disconnected,
-                    );
-                    let auth_mode = auth_session
-                        .get_untracked()
-                        .map(|session| session.auth_mode)
-                        .unwrap_or(AuthMode::LocalAccounts);
-                    set_auth_session.set(Some(unauthenticated_session(auth_mode)));
-                    set_selected_thread.set(None);
-                    set_selected_job_detail.set(None);
-                    set_selected_job_id.set(None);
-                    set_status_text.set("Session expired. Sign in again.".to_string());
-                    continue;
-                }
-                set_status_text.set(format!("Failed to poll jobs: {error}"));
-            }
-
-            let can_operate = auth_session
-                .get_untracked()
-                .map(|session| session_can_operate(&session))
-                .unwrap_or(false);
-            if can_operate && let Err(error) = sync_device_list(set_devices).await {
-                if is_auth_error(&error) {
-                    stop_realtime_updates(
-                        UiEventSyncHandles {
-                            selected_thread_id,
-                            selected_job_id,
-                            event_source,
-                            set_threads,
-                            set_selected_thread_id,
-                            set_selected_thread,
-                            set_jobs,
-                            set_devices,
-                            set_repositories,
-                            set_selected_job_id,
-                            set_selected_job_detail,
-                            set_auth_session,
-                            set_status_text,
-                            set_realtime_status,
-                            set_event_source,
-                            runtime: realtime_runtime.get_value(),
-                        },
-                        RealtimeStatus::Disconnected,
-                    );
-                    let auth_mode = auth_session
-                        .get_untracked()
-                        .map(|session| session.auth_mode)
-                        .unwrap_or(AuthMode::LocalAccounts);
-                    set_auth_session.set(Some(unauthenticated_session(auth_mode)));
-                    set_selected_thread.set(None);
-                    set_selected_job_detail.set(None);
-                    set_selected_job_id.set(None);
-                    set_status_text.set("Session expired. Sign in again.".to_string());
-                    continue;
-                }
-                set_status_text.set(format!("Failed to poll devices: {error}"));
-            }
-
-            if can_operate && let Err(error) = sync_repository_list(set_repositories).await {
-                if is_auth_error(&error) {
-                    stop_realtime_updates(
-                        UiEventSyncHandles {
-                            selected_thread_id,
-                            selected_job_id,
-                            event_source,
-                            set_threads,
-                            set_selected_thread_id,
-                            set_selected_thread,
-                            set_jobs,
-                            set_devices,
-                            set_repositories,
-                            set_selected_job_id,
-                            set_selected_job_detail,
-                            set_auth_session,
-                            set_status_text,
-                            set_realtime_status,
-                            set_event_source,
-                            runtime: realtime_runtime.get_value(),
-                        },
-                        RealtimeStatus::Disconnected,
-                    );
-                    let auth_mode = auth_session
-                        .get_untracked()
-                        .map(|session| session.auth_mode)
-                        .unwrap_or(AuthMode::LocalAccounts);
-                    set_auth_session.set(Some(unauthenticated_session(auth_mode)));
-                    set_selected_thread.set(None);
-                    set_selected_job_detail.set(None);
-                    set_selected_job_id.set(None);
-                    set_status_text.set("Session expired. Sign in again.".to_string());
-                    continue;
-                }
-                set_status_text.set(format!("Failed to poll repositories: {error}"));
-            }
-
-            if let Some(thread_id) = selected_thread_id.get_untracked()
-                && let Err(error) =
-                    sync_selected_thread(thread_id, set_selected_thread, set_status_text).await
-            {
-                if is_auth_error(&error) {
-                    stop_realtime_updates(
-                        UiEventSyncHandles {
-                            selected_thread_id,
-                            selected_job_id,
-                            event_source,
-                            set_threads,
-                            set_selected_thread_id,
-                            set_selected_thread,
-                            set_jobs,
-                            set_devices,
-                            set_repositories,
-                            set_selected_job_id,
-                            set_selected_job_detail,
-                            set_auth_session,
-                            set_status_text,
-                            set_realtime_status,
-                            set_event_source,
-                            runtime: realtime_runtime.get_value(),
-                        },
-                        RealtimeStatus::Disconnected,
-                    );
-                    let auth_mode = auth_session
-                        .get_untracked()
-                        .map(|session| session.auth_mode)
-                        .unwrap_or(AuthMode::LocalAccounts);
-                    set_auth_session.set(Some(unauthenticated_session(auth_mode)));
-                    set_selected_thread.set(None);
-                    set_selected_job_detail.set(None);
-                    set_selected_job_id.set(None);
-                    set_status_text.set("Session expired. Sign in again.".to_string());
-                    continue;
-                }
-                set_status_text.set(format!("Failed to refresh thread: {error}"));
-            }
-
-            if let Some(job_id) = selected_job_id.get_untracked()
-                && let Err(error) =
-                    sync_selected_job(job_id, set_selected_job_detail, set_status_text).await
-            {
-                if is_auth_error(&error) {
-                    stop_realtime_updates(
-                        UiEventSyncHandles {
-                            selected_thread_id,
-                            selected_job_id,
-                            event_source,
-                            set_threads,
-                            set_selected_thread_id,
-                            set_selected_thread,
-                            set_jobs,
-                            set_devices,
-                            set_repositories,
-                            set_selected_job_id,
-                            set_selected_job_detail,
-                            set_auth_session,
-                            set_status_text,
-                            set_realtime_status,
-                            set_event_source,
-                            runtime: realtime_runtime.get_value(),
-                        },
-                        RealtimeStatus::Disconnected,
-                    );
-                    let auth_mode = auth_session
-                        .get_untracked()
-                        .map(|session| session.auth_mode)
-                        .unwrap_or(AuthMode::LocalAccounts);
-                    set_auth_session.set(Some(unauthenticated_session(auth_mode)));
-                    set_selected_thread.set(None);
-                    set_selected_job_detail.set(None);
-                    set_selected_job_id.set(None);
-                    set_status_text.set("Session expired. Sign in again.".to_string());
-                    continue;
-                }
-                set_status_text.set(format!("Failed to refresh job: {error}"));
-            }
-        }
     });
 
     Effect::new(move |_| {
@@ -1191,6 +932,7 @@ pub fn App() -> impl IntoView {
             connect_ui_event_stream(UiEventSyncHandles {
                 selected_thread_id,
                 selected_job_id,
+                auth_session,
                 event_source,
                 set_threads,
                 set_selected_thread_id,
@@ -1198,6 +940,7 @@ pub fn App() -> impl IntoView {
                 set_jobs,
                 set_devices,
                 set_repositories,
+                set_signer_states,
                 set_selected_job_id,
                 set_selected_job_detail,
                 set_auth_session,
@@ -1599,6 +1342,7 @@ pub fn App() -> impl IntoView {
                                                                 UiEventSyncHandles {
                                                                     selected_thread_id,
                                                                     selected_job_id,
+                                                                    auth_session,
                                                                     event_source,
                                                                     set_threads,
                                                                     set_selected_thread_id,
@@ -1606,6 +1350,7 @@ pub fn App() -> impl IntoView {
                                                                     set_jobs,
                                                                     set_devices,
                                                                     set_repositories,
+                                                                    set_signer_states,
                                                                     set_selected_job_id,
                                                                     set_selected_job_detail,
                                                                     set_auth_session,
@@ -1767,6 +1512,7 @@ pub fn App() -> impl IntoView {
                                                                     UiEventSyncHandles {
                                                                         selected_thread_id,
                                                                         selected_job_id,
+                                                                        auth_session,
                                                                         event_source,
                                                                         set_threads,
                                                                         set_selected_thread_id,
@@ -1774,6 +1520,7 @@ pub fn App() -> impl IntoView {
                                                                         set_jobs,
                                                                         set_devices,
                                                                         set_repositories,
+                                                                        set_signer_states,
                                                                         set_selected_job_id,
                                                                         set_selected_job_detail,
                                                                         set_auth_session,
@@ -3274,6 +3021,9 @@ pub fn App() -> impl IntoView {
                                                             let related_notes = job_detail.related_notes.clone();
                                                             let summary = job_detail.summary.clone();
                                                             let approval_thread_id = thread_id.clone();
+                                                            let can_retry_job = job_can_retry(&job_detail.job);
+                                                            let retry_job_id = job_detail.job.id.clone();
+                                                            let retry_thread_id = thread_id.clone();
 
                                                             view! {
                                                                 <section class="context-panel context-tab-panel" data-testid="context-tab-job">
@@ -3298,6 +3048,42 @@ pub fn App() -> impl IntoView {
                                                                                 <span>{format!("Correlation: {}", job_detail.job.correlation_id.clone())}</span>
                                                                                 <span>{format!("Updated: {}", job_detail.job.updated_at.clone())}</span>
                                                                             </div>
+                                                                            {if can_retry_job {
+                                                                                view! {
+                                                                                    <div class="approval-actions">
+                                                                                        <button
+                                                                                            type="button"
+                                                                                            on:click=move |_| {
+                                                                                                spawn_local({
+                                                                                                    let job_id = retry_job_id.clone();
+                                                                                                    let thread_id = retry_thread_id.clone();
+                                                                                                    let set_selected_job_detail = set_selected_job_detail;
+                                                                                                    let set_selected_thread = set_selected_thread;
+                                                                                                    let set_jobs = set_jobs;
+                                                                                                    let set_status_text = set_status_text;
+                                                                                                    async move {
+                                                                                                        match retry_job(&job_id).await {
+                                                                                                            Ok(detail) => {
+                                                                                                                let status = detail.job.status.clone();
+                                                                                                                let short_id = detail.job.short_id.clone();
+                                                                                                                set_selected_job_detail.set(Some(detail));
+                                                                                                                let _ = sync_selected_thread(thread_id, set_selected_thread, set_status_text).await;
+                                                                                                                let _ = sync_job_list(set_jobs).await;
+                                                                                                                set_status_text.set(format!("Retried job {short_id}; status is {status}."));
+                                                                                                            }
+                                                                                                            Err(error) => set_status_text.set(format!("Failed to retry job: {error}")),
+                                                                                                        }
+                                                                                                    }
+                                                                                                });
+                                                                                            }
+                                                                                        >
+                                                                                            "Retry Job"
+                                                                                        </button>
+                                                                                    </div>
+                                                                                }.into_any()
+                                                                            } else {
+                                                                                ().into_any()
+                                                                            }}
                                                                             <div class="job-overview">
                                                                                 <article>
                                                                                     <p class="eyebrow">{if matches!(job_detail.job.target_kind, JobTargetKind::Repository) { "Repository" } else { "Capability" }}</p>

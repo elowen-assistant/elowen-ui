@@ -129,6 +129,33 @@ test("refreshes the job presentation from Job Update to Job Complete after realt
   ).toBeVisible();
 });
 
+test("does not use timer-driven polling after realtime catch-up", async ({ page }) => {
+  test.setTimeout(45_000);
+
+  const automaticGetCounts = new Map();
+  const watchedPaths = new Set([
+    "/api/v1/threads",
+    "/api/v1/jobs",
+    "/api/v1/devices",
+    "/api/v1/repositories",
+  ]);
+
+  page.on("request", (request) => {
+    const url = new URL(request.url());
+    if (request.method() === "GET" && watchedPaths.has(url.pathname)) {
+      automaticGetCounts.set(url.pathname, (automaticGetCounts.get(url.pathname) ?? 0) + 1);
+    }
+  });
+
+  await login(page);
+  await expect(page.getByText("Realtime connected").first()).toBeVisible();
+  automaticGetCounts.clear();
+
+  await page.waitForTimeout(31_000);
+
+  expect([...automaticGetCounts.entries()]).toEqual([]);
+});
+
 test("shows trust state separately from device freshness in the details panel", async ({ page }) => {
   await login(page);
 
@@ -147,7 +174,7 @@ test("shows trust state separately from device freshness in the details panel", 
   await expect(deviceTrustList.getByText(/Trusted: 2026-04-15T13:55:00Z/)).toBeVisible();
 });
 
-test("updates the manual dispatch trust guidance when choosing a different edge", async ({ page }) => {
+test("marks blocked edge options with trust guidance in manual dispatch", async ({ page }) => {
   await login(page);
 
   await page.getByRole("button", { name: "Show Details" }).click();
@@ -158,12 +185,22 @@ test("updates the manual dispatch trust guidance when choosing a different edge"
   await expect(trustCard).toContainText("Trusted");
 
   const manualJobPanel = page.getByTestId("context-tab-manual");
-  await manualJobPanel.locator("select").first().selectOption("travel-edge-02");
+  const blockedOption = manualJobPanel.locator("select").first().locator("option[value='travel-edge-02']");
+  await expect(blockedOption).toHaveText(/Travel Edge .* Needs Attention .* Dispatch blocked/);
+  await expect(blockedOption).toBeDisabled();
+});
 
-  await expect(trustCard).toContainText("Travel Edge");
-  await expect(trustCard).toContainText("Needs Attention");
-  await expect(trustCard).toContainText("Re-enrollment");
-  await expect(trustCard).toContainText("Dispatch should stay blocked until this trust issue is resolved.");
+test("lets operators retry jobs that failed because the edge was unavailable", async ({ page }) => {
+  await login(page, { username: "admin", password: "slice43-edge-unavailable" });
+
+  await page.getByRole("button", { name: "Show Details" }).click();
+  await page.getByRole("button", { name: "Selected Job" }).click();
+
+  await expect(page.getByTestId("context-tab-job").getByText("Failure class edge_unavailable")).toBeVisible();
+  await page.getByRole("button", { name: "Retry Job" }).click();
+
+  await expect(page.getByText("Retried job job-030; status is dispatched.").first()).toBeVisible();
+  await expect(page.getByTestId("context-tab-job").getByText("dispatched").first()).toBeVisible();
 });
 
 async function login(page, { username = "admin", password = "slice30" } = {}) {

@@ -5,8 +5,8 @@ use web_sys::{Event, EventSource, MessageEvent};
 
 use crate::{
     api::{
-        events_url, fetch_devices, fetch_job, fetch_jobs, fetch_repositories, fetch_thread,
-        fetch_threads,
+        events_url, fetch_devices, fetch_job, fetch_jobs, fetch_orchestrator_signers,
+        fetch_repositories, fetch_thread, fetch_threads,
     },
     models::{
         AuthSessionStatus, DeviceRecord, JobDetail, JobRecord, RepositoryOption, ThreadDetail,
@@ -16,8 +16,7 @@ use crate::{
 
 use super::state::{RealtimeStatus, UiEventSyncHandles};
 
-const REALTIME_DEGRADED_MESSAGE: &str =
-    "Realtime stream unavailable. Polling fallback remains active.";
+const REALTIME_DEGRADED_MESSAGE: &str = "Realtime stream unavailable. Automatic background updates are paused until the stream reconnects.";
 
 pub(super) fn connect_ui_event_stream(handles: UiEventSyncHandles) {
     close_active_event_source(&handles);
@@ -147,6 +146,10 @@ async fn refresh_for_ui_event(event: UiEvent, handles: UiEventSyncHandles) -> Re
             sync_repository_list(handles.set_repositories).await?;
             sync_selected_resources_for_current_thread(handles).await?;
         }
+        "trust.signers.changed" if session_can_admin(&handles) => {
+            sync_signer_states(handles.set_signer_states).await?;
+        }
+        "trust.signers.changed" => {}
         _ => {
             sync_thread_list_quiet(
                 handles.set_threads,
@@ -170,6 +173,9 @@ async fn sync_realtime_catch_up(handles: UiEventSyncHandles) -> Result<(), Strin
     sync_job_list(handles.set_jobs).await?;
     sync_device_list(handles.set_devices).await?;
     sync_repository_list(handles.set_repositories).await?;
+    if session_can_admin(&handles) {
+        sync_signer_states(handles.set_signer_states).await?;
+    }
 
     if let Some(thread_id) = handles.selected_thread_id.get_untracked() {
         sync_selected_thread_quiet(thread_id, handles.set_selected_thread).await?;
@@ -360,6 +366,13 @@ pub(super) async fn sync_repository_list(
     Ok(())
 }
 
+pub(super) async fn sync_signer_states(
+    set_signer_states: WriteSignal<Vec<crate::models::OrchestratorSignerStateRecord>>,
+) -> Result<(), String> {
+    set_signer_states.set(fetch_orchestrator_signers().await?);
+    Ok(())
+}
+
 pub(super) async fn sync_selected_thread(
     thread_id: String,
     set_selected_thread: WriteSignal<Option<ThreadDetail>>,
@@ -408,4 +421,17 @@ async fn sync_selected_job_quiet(
 
 pub(super) fn is_auth_error(error: &str) -> bool {
     error.contains("sign in required") || error.contains("status 401")
+}
+
+fn session_can_admin(handles: &UiEventSyncHandles) -> bool {
+    handles
+        .auth_session
+        .get_untracked()
+        .map(|session| {
+            session
+                .permissions
+                .iter()
+                .any(|permission| matches!(permission, crate::models::AuthPermission::Admin))
+        })
+        .unwrap_or(false)
 }

@@ -35,7 +35,15 @@ pub(crate) struct MessageRecord {
 
 #[derive(Clone, Debug, Deserialize, PartialEq)]
 pub(crate) struct UiEvent {
+    #[serde(default)]
+    pub(crate) event_id: Option<String>,
     pub(crate) event_type: String,
+    #[serde(default)]
+    pub(crate) resource_kind: Option<String>,
+    #[serde(default)]
+    pub(crate) resource_id: Option<String>,
+    #[serde(default)]
+    pub(crate) action: Option<String>,
     pub(crate) thread_id: Option<String>,
     pub(crate) job_id: Option<String>,
     pub(crate) device_id: Option<String>,

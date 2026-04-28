@@ -6,8 +6,8 @@ use web_sys::EventSource;
 
 use super::reconnect::ReconnectController;
 use crate::models::{
-    AuthSessionStatus, DeviceRecord, JobDetail, JobRecord, RepositoryOption, ThreadDetail,
-    ThreadSummary,
+    AuthSessionStatus, DeviceRecord, JobDetail, JobRecord, OrchestratorSignerStateRecord,
+    RepositoryOption, ThreadDetail, ThreadSummary,
 };
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -82,6 +82,7 @@ impl Default for RealtimeRuntime {
 pub(super) struct UiEventSyncHandles {
     pub(super) selected_thread_id: ReadSignal<Option<String>>,
     pub(super) selected_job_id: ReadSignal<Option<String>>,
+    pub(super) auth_session: ReadSignal<Option<AuthSessionStatus>>,
     pub(super) event_source: ReadSignal<Option<EventSource>>,
     pub(super) set_threads: WriteSignal<Vec<ThreadSummary>>,
     pub(super) set_selected_thread_id: WriteSignal<Option<String>>,
@@ -89,6 +90,7 @@ pub(super) struct UiEventSyncHandles {
     pub(super) set_jobs: WriteSignal<Vec<JobRecord>>,
     pub(super) set_devices: WriteSignal<Vec<DeviceRecord>>,
     pub(super) set_repositories: WriteSignal<Vec<RepositoryOption>>,
+    pub(super) set_signer_states: WriteSignal<Vec<OrchestratorSignerStateRecord>>,
     pub(super) set_selected_job_id: WriteSignal<Option<String>>,
     pub(super) set_selected_job_detail: WriteSignal<Option<JobDetail>>,
     pub(super) set_auth_session: WriteSignal<Option<AuthSessionStatus>>,
@@ -103,4 +105,3 @@ pub(super) const STORAGE_SELECTED_JOB_ID: &str = "elowen.selected_job_id";
 pub(super) const STORAGE_CONTEXT_OPEN: &str = "elowen.context_open";
 pub(super) const STORAGE_NAV_MODE: &str = "elowen.nav_mode";
 pub(super) const STORAGE_COMPOSER_TEXT: &str = "elowen.composer_text";
-pub(super) const POLL_FALLBACK_MS: u32 = 30_000;
